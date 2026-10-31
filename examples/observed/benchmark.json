@@ -1,0 +1,127 @@
+{
+  "schema": "postgres-audit-repeated-fixture-benchmark/v1",
+  "fixture_sha256": "b816a17d90d7d810a2f73912bce667f2639f009025eea62d2516016add702df1",
+  "binary_sha256": "c277f792faa43f80de6b05f631d5947221283da167a76d1fd854e14b7131e961",
+  "system": "Darwin",
+  "os_release": "27.0.0",
+  "machine": "arm64",
+  "scope": "File read, JSON parse and deterministic detection only. No persistence, network or SIEM. Repeated synthetic fixture; warm filesystem cache; no quality estimate.",
+  "cases": [
+    {
+      "fixture_repetitions": 1000,
+      "records": 9000,
+      "input_bytes": 3905000,
+      "median_records_per_second": 735526.974430222,
+      "runs": [
+        {
+          "bytes": 3905000,
+          "findings": 8000,
+          "records": 9000,
+          "records_per_second": 667948.9307028218,
+          "schema": "postgres-audit-benchmark/v1",
+          "scope": "Input read, parsing and deterministic detection only; no persistence, network or SIEM.",
+          "wall_seconds": 0.013474084,
+          "max_rss_bytes": 2899968
+        },
+        {
+          "bytes": 3905000,
+          "findings": 8000,
+          "records": 9000,
+          "records_per_second": 735526.974430222,
+          "schema": "postgres-audit-benchmark/v1",
+          "scope": "Input read, parsing and deterministic detection only; no persistence, network or SIEM.",
+          "wall_seconds": 0.012236125,
+          "max_rss_bytes": 2899968
+        },
+        {
+          "bytes": 3905000,
+          "findings": 8000,
+          "records": 9000,
+          "records_per_second": 746315.0693451085,
+          "schema": "postgres-audit-benchmark/v1",
+          "scope": "Input read, parsing and deterministic detection only; no persistence, network or SIEM.",
+          "wall_seconds": 0.01205925,
+          "max_rss_bytes": 2883584
+        }
+      ]
+    },
+    {
+      "fixture_repetitions": 10000,
+      "records": 90000,
+      "input_bytes": 39050000,
+      "median_records_per_second": 755599.0392541426,
+      "runs": [
+        {
+          "bytes": 39050000,
+          "findings": 80000,
+          "records": 90000,
+          "records_per_second": 744606.5171536492,
+          "schema": "postgres-audit-benchmark/v1",
+          "scope": "Input read, parsing and deterministic detection only; no persistence, network or SIEM.",
+          "wall_seconds": 0.120869208,
+          "max_rss_bytes": 2899968
+        },
+        {
+          "bytes": 39050000,
+          "findings": 80000,
+          "records": 90000,
+          "records_per_second": 755599.0392541426,
+          "schema": "postgres-audit-benchmark/v1",
+          "scope": "Input read, parsing and deterministic detection only; no persistence, network or SIEM.",
+          "wall_seconds": 0.119110792,
+          "max_rss_bytes": 2899968
+        },
+        {
+          "bytes": 39050000,
+          "findings": 80000,
+          "records": 90000,
+          "records_per_second": 762632.4213752241,
+          "schema": "postgres-audit-benchmark/v1",
+          "scope": "Input read, parsing and deterministic detection only; no persistence, network or SIEM.",
+          "wall_seconds": 0.118012292,
+          "max_rss_bytes": 2899968
+        }
+      ]
+    },
+    {
+      "fixture_repetitions": 50000,
+      "records": 450000,
+      "input_bytes": 195250000,
+      "median_records_per_second": 749188.3268693752,
+      "runs": [
+        {
+          "bytes": 195250000,
+          "findings": 400000,
+          "records": 450000,
+          "records_per_second": 749188.3268693752,
+          "schema": "postgres-audit-benchmark/v1",
+          "scope": "Input read, parsing and deterministic detection only; no persistence, network or SIEM.",
+          "wall_seconds": 0.600650042,
+          "max_rss_bytes": 2916352
+        },
+        {
+          "bytes": 195250000,
+          "findings": 400000,
+          "records": 450000,
+          "records_per_second": 759321.5144365901,
+          "schema": "postgres-audit-benchmark/v1",
+          "scope": "Input read, parsing and deterministic detection only; no persistence, network or SIEM.",
+          "wall_seconds": 0.592634334,
+          "max_rss_bytes": 2916352
+        },
+        {
+          "bytes": 195250000,
+          "findings": 400000,
+          "records": 450000,
+          "records_per_second": 745030.6974004876,
+          "schema": "postgres-audit-benchmark/v1",
+          "scope": "Input read, parsing and deterministic detection only; no persistence, network or SIEM.",
+          "wall_seconds": 0.604001958,
+          "max_rss_bytes": 2850816
+        }
+      ]
+    }
+  ],
+  "hardware": "Apple M4 Pro",
+  "macos_version": "27.0.1"
+}

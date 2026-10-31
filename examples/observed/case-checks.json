@@ -1,0 +1,5 @@
+{
+  "scenario_checks_passed": 6,
+  "inferred_successes": 0,
+  "scope": "Four positive scenarios and two benign controls, not a general precision/recall estimate."
+}

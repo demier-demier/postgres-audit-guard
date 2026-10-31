@@ -1,0 +1,24 @@
+{
+  "anchor": {
+    "manifest_sha256": "a98cc664d6dccc2b0845c06e616ae163fcd6f743bc6d7bba0f133ac3cce22c9c",
+    "records": 90000
+  },
+  "bytes": 39050000,
+  "elapsed_seconds": 0.818531,
+  "findings_by_rule": {
+    "DB001": 20000,
+    "DB004": 10000,
+    "DB005": 20000,
+    "DB006": 30000
+  },
+  "note": "Store the manifest hash separately. Integrity does not establish source authenticity.",
+  "records": 90000,
+  "schema": "postgres-audit-scan/v1",
+  "verification_wall_seconds": 0.6417463330000001,
+  "verification": {
+    "manifest_sha256": "a98cc664d6dccc2b0845c06e616ae163fcd6f743bc6d7bba0f133ac3cce22c9c",
+    "records": 90000
+  },
+  "max_rss_bytes": 3145728,
+  "scope": "One warm-cache full capture observation of 10000 exact repetitions of the nine-record synthetic fixture, including evidence hashing and file sync. No SIEM."
+}

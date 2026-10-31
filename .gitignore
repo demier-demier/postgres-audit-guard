@@ -1,0 +1,10 @@
+/target/
+/runs/
+__pycache__/
+*.pyc
+*.db
+*.db-*
+.DS_Store
+.ruff_cache/
+case-*/
+/alerts.ndjson

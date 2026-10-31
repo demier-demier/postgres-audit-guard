@@ -1,0 +1,17 @@
+{
+  "anchor": {
+    "manifest_sha256": "fa955a3b4724a50bd3e81a1157ad9f83450948755a036a04b3487aef617130d8",
+    "records": 9
+  },
+  "bytes": 3905,
+  "elapsed_seconds": 0.019118167,
+  "findings_by_rule": {
+    "DB001": 2,
+    "DB004": 1,
+    "DB005": 2,
+    "DB006": 3
+  },
+  "note": "Store the manifest hash separately. Integrity does not establish source authenticity.",
+  "records": 9,
+  "schema": "postgres-audit-scan/v1"
+}
