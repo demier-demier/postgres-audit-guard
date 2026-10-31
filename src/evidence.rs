@@ -199,6 +199,7 @@ impl BundleWriter {
     /// Refuses an existing directory. Incomplete work remains explicitly marked.
     pub fn create(output_dir: &Path) -> Result<Self> {
         let mut builder = fs::DirBuilder::new();
+        builder.recursive(false);
         #[cfg(unix)]
         {
             use std::os::unix::fs::DirBuilderExt;
