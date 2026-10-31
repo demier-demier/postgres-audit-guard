@@ -1,0 +1,80 @@
+{
+  "scenario_checks_passed": 12,
+  "alerts": 4,
+  "benign_scenarios_with_alert": 1,
+  "scope": "Authored synthetic scenario checks, not general precision/recall or proof of crime.",
+  "results": [
+    {
+      "scenario": "baseline",
+      "authored_label": "benign",
+      "alerts": 0,
+      "intentional_benign_alert": false
+    },
+    {
+      "scenario": "merchant",
+      "authored_label": "benign",
+      "alerts": 1,
+      "intentional_benign_alert": true
+    },
+    {
+      "scenario": "pass-through",
+      "authored_label": "synthetic_suspicious",
+      "alerts": 1,
+      "intentional_benign_alert": false
+    },
+    {
+      "scenario": "circle",
+      "authored_label": "synthetic_suspicious",
+      "alerts": 1,
+      "intentional_benign_alert": false
+    },
+    {
+      "scenario": "cross-currency-circle",
+      "authored_label": "benign",
+      "alerts": 0,
+      "intentional_benign_alert": false
+    },
+    {
+      "scenario": "delayed-return",
+      "authored_label": "benign",
+      "alerts": 0,
+      "intentional_benign_alert": false
+    },
+    {
+      "scenario": "below-pass-through",
+      "authored_label": "benign",
+      "alerts": 0,
+      "intentional_benign_alert": false
+    },
+    {
+      "scenario": "two-senders",
+      "authored_label": "benign",
+      "alerts": 0,
+      "intentional_benign_alert": false
+    },
+    {
+      "scenario": "circle-amount-drop",
+      "authored_label": "benign",
+      "alerts": 0,
+      "intentional_benign_alert": false
+    },
+    {
+      "scenario": "simultaneous-circle",
+      "authored_label": "benign",
+      "alerts": 0,
+      "intentional_benign_alert": false
+    },
+    {
+      "scenario": "circle-boundary",
+      "authored_label": "synthetic_suspicious",
+      "alerts": 1,
+      "intentional_benign_alert": false
+    },
+    {
+      "scenario": "cross-currency-fan-in",
+      "authored_label": "benign",
+      "alerts": 0,
+      "intentional_benign_alert": false
+    }
+  ]
+}

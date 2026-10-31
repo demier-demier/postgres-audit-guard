@@ -1,0 +1,240 @@
+{
+  "schema": "financial-crime-synthetic-fixture/v1",
+  "provenance": {
+    "source": "Original, hand-authored synthetic scenarios for this repository",
+    "all_accounts_and_transactions_are_synthetic": true,
+    "contains_real_customer_or_employer_data": false,
+    "labels_describe_scripted_scenarios_not_actual_crimes": true
+  },
+  "input_file": "transfers.jsonl",
+  "records": 58,
+  "amount_unit": "integer minor currency units; no FX conversion",
+  "expected_configuration": {
+    "window_seconds": 3600,
+    "fan_in_minimum_distinct_senders": 3,
+    "pass_through_minimum_percent": 80,
+    "circle_accounts": 3,
+    "circle_each_hop_minimum_percent": 80,
+    "circle_each_hop_maximum_percent": 100,
+    "strictly_increasing_phase_or_hop_timestamps": true
+  },
+  "expected_summary": {
+    "findings": 4,
+    "findings_by_rule": {
+      "TF001": 2,
+      "TF002": 2
+    },
+    "scripted_suspicious_scenarios": 3,
+    "benign_scenarios": 9,
+    "benign_scenarios_expected_to_alert": 1,
+    "benign_scenarios_expected_not_to_alert": 8
+  },
+  "interpretation": "These expectations test deterministic pattern matching on authored examples. The benign merchant alert is an intentional scenario-label false positive. They are not real-world precision, recall, fraud probabilities, customer risk scores, or proof of unlawful activity.",
+  "scenarios": [
+    {
+      "id": "baseline",
+      "status": "benign",
+      "purpose": "Salary, rent, shopping and personal savings control",
+      "transaction_ids": [
+        "baseline-01",
+        "baseline-02",
+        "baseline-03",
+        "baseline-04",
+        "baseline-05",
+        "baseline-06",
+        "baseline-07",
+        "baseline-08"
+      ],
+      "expected_rule_ids": [],
+      "expected_pattern_transaction_ids": [],
+      "analyst_context": "Scripted ordinary payments; no fan-in or three-account return. Account labels describe fictitious roles, not inferred identities."
+    },
+    {
+      "id": "merchant",
+      "status": "benign",
+      "purpose": "Legitimate merchant settlement intentionally matches fan-in/pass-through",
+      "transaction_ids": [
+        "merchant-01",
+        "merchant-02",
+        "merchant-03",
+        "merchant-04",
+        "merchant-05",
+        "merchant-06"
+      ],
+      "expected_rule_ids": [
+        "TF001"
+      ],
+      "expected_pattern_transaction_ids": [
+        "merchant-01",
+        "merchant-02",
+        "merchant-03",
+        "merchant-04"
+      ],
+      "analyst_context": "Author-defined benign scenario: three customer purchases followed by an 85% payment-processor settlement. The six transaction fields cannot prove these business purposes. This expected alert is an intentional scenario-label false positive and requires external analyst context, not automatic suspicion or account blocking."
+    },
+    {
+      "id": "pass-through",
+      "status": "synthetic_suspicious",
+      "purpose": "Three-source collection followed by split rapid pass-through",
+      "transaction_ids": [
+        "pass-through-01",
+        "pass-through-02",
+        "pass-through-03",
+        "pass-through-04",
+        "pass-through-05",
+        "pass-through-06"
+      ],
+      "expected_rule_ids": [
+        "TF001"
+      ],
+      "expected_pattern_transaction_ids": [
+        "pass-through-01",
+        "pass-through-02",
+        "pass-through-03",
+        "pass-through-04",
+        "pass-through-05"
+      ],
+      "analyst_context": "Scripted investigative pattern: 100000 minor units received from three sources, then 90000 (90%) sent out in two transfers within 25 minutes of the first inflow. No criminal intent or common ownership is established."
+    },
+    {
+      "id": "circle",
+      "status": "synthetic_suspicious",
+      "purpose": "Ordered three-account return with modest amount reduction",
+      "transaction_ids": [
+        "circle-01",
+        "circle-02",
+        "circle-03",
+        "circle-04"
+      ],
+      "expected_rule_ids": [
+        "TF002"
+      ],
+      "expected_pattern_transaction_ids": [
+        "circle-01",
+        "circle-02",
+        "circle-03"
+      ],
+      "analyst_context": "Scripted A-to-B-to-C-to-A pattern completed in 30 minutes. Consecutive retention ratios are 95% and approximately 94.74%. Transaction links alone do not establish provenance of funds or unlawful behavior."
+    },
+    {
+      "id": "cross-currency-circle",
+      "status": "benign",
+      "purpose": "Apparent circle has mixed currencies",
+      "transaction_ids": [
+        "cross-currency-circle-01",
+        "cross-currency-circle-02",
+        "cross-currency-circle-03",
+        "cross-currency-circle-04",
+        "cross-currency-circle-05"
+      ],
+      "expected_rule_ids": [],
+      "expected_pattern_transaction_ids": [],
+      "analyst_context": "A mixed-currency chain must not be treated as a same-currency circle. No exchange rates or FX transactions are supplied; numerical amounts in different currencies are incomparable."
+    },
+    {
+      "id": "delayed-return",
+      "status": "benign",
+      "purpose": "Three-account return outside the configured 60-minute window",
+      "transaction_ids": [
+        "delayed-return-01",
+        "delayed-return-02",
+        "delayed-return-03",
+        "delayed-return-04"
+      ],
+      "expected_rule_ids": [],
+      "expected_pattern_transaction_ids": [],
+      "analyst_context": "The return arrives 70 minutes after the first transfer, outside the rule window. A negative result means only that these configured rules did not match, not that the activity is safe."
+    },
+    {
+      "id": "below-pass-through",
+      "status": "benign",
+      "purpose": "Three senders but only 79% leaves inside the time window",
+      "transaction_ids": [
+        "below-pass-through-01",
+        "below-pass-through-02",
+        "below-pass-through-03",
+        "below-pass-through-04",
+        "below-pass-through-05",
+        "below-pass-through-06"
+      ],
+      "expected_rule_ids": [],
+      "expected_pattern_transaction_ids": [],
+      "analyst_context": "79000/100000 = 79%, below the inclusive 80% threshold. The later 1000 payment occurs outside the original inflow window and must not turn the earlier interval into a match."
+    },
+    {
+      "id": "two-senders",
+      "status": "benign",
+      "purpose": "Rapid high pass-through from only two distinct senders",
+      "transaction_ids": [
+        "two-senders-01",
+        "two-senders-02",
+        "two-senders-03",
+        "two-senders-04",
+        "two-senders-05"
+      ],
+      "expected_rule_ids": [],
+      "expected_pattern_transaction_ids": [],
+      "analyst_context": "90% leaves quickly, but only two distinct sources contribute. This is a control for the minimum-three-senders requirement."
+    },
+    {
+      "id": "circle-amount-drop",
+      "status": "benign",
+      "purpose": "Ordered same-currency circle drops below the per-hop ratio",
+      "transaction_ids": [
+        "circle-amount-drop-01",
+        "circle-amount-drop-02",
+        "circle-amount-drop-03"
+      ],
+      "expected_rule_ids": [],
+      "expected_pattern_transaction_ids": [],
+      "analyst_context": "The first onward transfer retains only 79% of the previous amount, so the 80-100% consecutive-hop condition fails."
+    },
+    {
+      "id": "simultaneous-circle",
+      "status": "benign",
+      "purpose": "Equal timestamps do not establish ordered causality",
+      "transaction_ids": [
+        "simultaneous-circle-01",
+        "simultaneous-circle-02",
+        "simultaneous-circle-03"
+      ],
+      "expected_rule_ids": [],
+      "expected_pattern_transaction_ids": [],
+      "analyst_context": "All three timestamps are equal. IDs and JSONL row order must not invent a temporal sequence."
+    },
+    {
+      "id": "circle-boundary",
+      "status": "synthetic_suspicious",
+      "purpose": "Inclusive 80% ratio and 60-minute duration boundaries",
+      "transaction_ids": [
+        "circle-boundary-01",
+        "circle-boundary-02",
+        "circle-boundary-03"
+      ],
+      "expected_rule_ids": [
+        "TF002"
+      ],
+      "expected_pattern_transaction_ids": [
+        "circle-boundary-01",
+        "circle-boundary-02",
+        "circle-boundary-03"
+      ],
+      "analyst_context": "Both onward transfers are exactly 80% of the preceding transfer and the loop completes in exactly 60 minutes. This is a scripted rule-boundary case, not evidence of a crime."
+    },
+    {
+      "id": "cross-currency-fan-in",
+      "status": "benign",
+      "purpose": "Three senders exist only if currencies are incorrectly combined",
+      "transaction_ids": [
+        "cross-currency-fan-in-01",
+        "cross-currency-fan-in-02",
+        "cross-currency-fan-in-03",
+        "cross-currency-fan-in-04",
+        "cross-currency-fan-in-05"
+      ],
+      "expected_rule_ids": [],
+      "expected_pattern_transaction_ids": [],
+      "analyst_context": "EUR has two distinct senders and USD has one; neither reaches three. Opening balances are intentionally unspecified, so observed outflow can exceed observed inflow. Never combine currencies or infer a complete account ledger from this extract."
+    }
+  ]
+}

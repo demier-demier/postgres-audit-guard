@@ -1,12 +1,13 @@
 #![forbid(unsafe_code)]
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use postgres_audit_guard::{detection, ecs, evidence, ingest};
+use postgres_audit_guard::{detection, ecs, evidence, ingest, transfers};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     fs::File,
-    io::{BufReader, BufWriter, Write},
+    io::{BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
     time::Instant,
 };
@@ -22,6 +23,22 @@ struct Args {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Find explainable transfer patterns for human review; never infer a crime.
+    TriageTransfers {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Verify an anchored transfer report and reproduce its analysis from source bytes.
+    VerifyTransferReport {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        report: PathBuf,
+        #[arg(long)]
+        anchor: String,
+    },
     /// Preserve exact input and detected findings in a new evidence directory.
     Scan {
         #[arg(long)]
@@ -49,8 +66,87 @@ enum Command {
         input: PathBuf,
     },
 }
+
+fn bounded_file(path: &Path) -> Result<Vec<u8>> {
+    anyhow::ensure!(
+        std::fs::symlink_metadata(path)?.file_type().is_file(),
+        "Input must be a regular non-symlink file"
+    );
+    let file = File::open(path)?;
+    anyhow::ensure!(file.metadata()?.is_file(), "Input must be a regular file");
+    let mut bytes = Vec::new();
+    file.take(transfers::MAX_INPUT_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    anyhow::ensure!(
+        bytes.len() <= transfers::MAX_INPUT_BYTES,
+        "Input exceeds resource limit"
+    );
+    Ok(bytes)
+}
+
+fn atomic_json_output(path: &Path, bytes: &[u8]) -> Result<()> {
+    anyhow::ensure!(!path.exists(), "Refusing to overwrite output");
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist_noclobber(path)?;
+    Ok(())
+}
+
 fn main() -> Result<()> {
     match Args::parse().command {
+        Command::TriageTransfers { input, output } => {
+            let source = bounded_file(&input)?;
+            let report = transfers::analyze(&source)?;
+            let value = serde_json::to_value(&report)?;
+            let mut bytes = serde_json::to_vec_pretty(&value)?;
+            bytes.push(b'\n');
+            anyhow::ensure!(
+                bytes.len() <= transfers::MAX_INPUT_BYTES,
+                "Report exceeds resource limit"
+            );
+            atomic_json_output(&output, &bytes)?;
+            println!(
+                "{}",
+                json!({"report_sha256":hex::encode(Sha256::digest(&bytes)),
+                "input_records":value["input_records"],"alerts":value["alerts"].as_array().map_or(0,Vec::len),
+                "note":"Keep the report digest separately. Patterns require human review; no crime is established."})
+            );
+        }
+        Command::VerifyTransferReport {
+            input,
+            report,
+            anchor,
+        } => {
+            anyhow::ensure!(
+                anchor.len() == 64
+                    && anchor
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+                "Expected anchor must be 64 lowercase hex characters"
+            );
+            let report_bytes = bounded_file(&report)?;
+            anyhow::ensure!(
+                hex::encode(Sha256::digest(&report_bytes)) == anchor,
+                "Report differs from trusted external anchor"
+            );
+            let source = bounded_file(&input)?;
+            let recomputed = serde_json::to_value(transfers::analyze(&source)?)?;
+            let mut canonical = serde_json::to_vec_pretty(&recomputed)?;
+            canonical.push(b'\n');
+            anyhow::ensure!(
+                report_bytes == canonical,
+                "Report does not match canonical source analysis and current policy"
+            );
+            println!(
+                "{}",
+                json!({"verified":true,"report_sha256":anchor,"input_sha256":hex::encode(Sha256::digest(&source)),"scope":"Integrity and deterministic replay, not source authenticity or proof of crime."})
+            );
+        }
         Command::Scan { input, bundle } => {
             let reader = BufReader::new(File::open(input)?);
             let mut writer = evidence::BundleWriter::create(&bundle)?;

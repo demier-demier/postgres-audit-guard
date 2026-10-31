@@ -1,6 +1,6 @@
 # Postgres Audit Guard
 
-**Rust security triage for PostgreSQL logs, with independently anchored evidence.**
+**Rust security and financial-investigation tooling for PostgreSQL workflows.**
 
 A database operator attempts to elevate a role, export account data or suppress
 logging. Which records should an analyst inspect, and can another investigator
@@ -13,6 +13,19 @@ Postgres Audit Guard reads **PostgreSQL 15+ `jsonlog`** files, emits bounded,
 deterministic security signals and preserves exact source bytes in a verifiable
 bundle. An SQL-free **Elastic Common Schema (ECS) NDJSON export** fits existing log
 pipelines. The application never connects to a database or executes a SQL statement.
+
+The [transfer-investigation module](docs/FINANCIAL-CRIME.md) examines same-currency
+collection/outflow and three-account return patterns in authorized extracts. Every
+alert exposes its source records, times and integer calculations; reports can be
+verified against an external digest and reproduced from the exact input. It is
+human-review support, not an automated finding of crime. The synthetic benchmark
+deliberately includes a legitimate merchant settlement that triggers an alert.
+
+```sh
+cargo run --release --locked -- triage-transfers \
+  --input examples/financial-crime/transfers.jsonl --output transfer-report.json
+python3 scripts/check_transfers.py transfer-report.json
+```
 
 ## Try the real local database case
 
@@ -94,6 +107,7 @@ that every original record was captured, or legal admissibility.
 [Analyst workflow](docs/ANALYST-WORKFLOW.md) ·
 [Provenance](PROVENANCE.md)
 
-This is a defensive engineering reference implementation. It is not a fraud/AML
-engine, blocking control, banking certification or court-certified forensic tool.
+This is a defensive engineering reference implementation with a bounded transfer
+screening module. It is not a production fraud/AML engine, blocking control,
+banking certification or court-certified forensic tool.
 No association with a bank, law-enforcement agency or software vendor is implied.

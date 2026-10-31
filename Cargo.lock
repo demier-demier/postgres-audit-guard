@@ -74,22 +74,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
-name = "postgres-audit-guard"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "hex",
- "proptest",
- "serde",
- "serde_json",
- "sha2",
- "sqlparser",
- "tempfile",
-]
-
-[[package]]
 name = "bit-set"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -434,6 +418,22 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+
+[[package]]
+name = "postgres-audit-guard"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "hex",
+ "proptest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlparser",
+ "tempfile",
+]
 
 [[package]]
 name = "proc-macro-crate"

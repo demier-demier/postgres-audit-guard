@@ -5,6 +5,8 @@ The newly created cluster is stopped in finally; files remain for inspection.
 """
 
 import argparse
+import csv
+import io
 import json
 import os
 from pathlib import Path
@@ -16,6 +18,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--bindir", type=Path)
+    parser.add_argument(
+        "--transfers",
+        type=Path,
+        help="Optional original synthetic NDJSON fixture to import and export through PostgreSQL",
+    )
     args = parser.parse_args()
     bindir = args.bindir or Path(
         subprocess.check_output(["pg_config", "--bindir"], text=True).strip()
@@ -68,6 +75,7 @@ def main():
         f.write(conf)
     attempted_start = False
     observed = []
+    transfer_rows = None
     try:
         attempted_start = True
         run(
@@ -140,6 +148,47 @@ def main():
                 }
             )
         env["PGAPPNAME"] = "postgres-audit-lab"
+        if args.transfers is not None:
+            with args.transfers.open("rb") as source:
+                transfer_bytes = source.read(16 * 1024 * 1024 + 1)
+            if len(transfer_bytes) > 16 * 1024 * 1024:
+                raise ValueError("Transfer fixture exceeds 16 MiB")
+            rows = [json.loads(line) for line in transfer_bytes.splitlines()]
+            if (
+                not rows
+                or len(rows) > 20000
+                or not all(isinstance(row, dict) for row in rows)
+            ):
+                raise ValueError("Transfer fixture must contain 1..20000 JSON objects")
+            csv_input = io.StringIO()
+            csv.writer(csv_input).writerows([[json.dumps(row)] for row in rows])
+            run(
+                base + ["-c", "CREATE TABLE lab_transfers(payload jsonb NOT NULL)"],
+                check=True,
+            )
+            run(
+                base
+                + ["-c", "COPY lab_transfers(payload) FROM STDIN WITH (FORMAT csv)"],
+                input=csv_input.getvalue(),
+                check=True,
+            )
+            exported = run(
+                base
+                + [
+                    "-A",
+                    "-t",
+                    "-c",
+                    "SELECT payload::text FROM lab_transfers ORDER BY payload->>'timestamp', payload->>'id'",
+                ],
+                check=True,
+            )
+            exported_rows = [json.loads(line) for line in exported.stdout.splitlines()]
+            if sorted(rows, key=lambda r: r["id"]) != sorted(
+                exported_rows, key=lambda r: r["id"]
+            ):
+                raise ValueError("PostgreSQL transfer round trip changed source values")
+            (work / "postgres-transfers.jsonl").write_text(exported.stdout)
+            transfer_rows = len(exported_rows)
         run(base + ["-c", "SELECT pg_rotate_logfile()"], check=True)
         time.sleep(0.3)
     finally:
@@ -185,6 +234,14 @@ def main():
         "records": count,
         "cases": observed,
     }
+    if transfer_rows is not None:
+        report["transfer_round_trip"] = {
+            "records": transfer_rows,
+            "values_preserved": True,
+            "storage": "PostgreSQL JSONB",
+            "export": "psql SELECT payload::text",
+            "synthetic": True,
+        }
     (work / "lab-results.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 

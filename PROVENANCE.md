@@ -8,6 +8,12 @@ No employer/client source code, operational data or system names are used.
   `bank_accounts` data and `lab_reader` role; no real customers or transactions.
 - `examples/lab-results.json`: observed `psql` exit codes and stopped-cluster status.
   These outcomes are independent of the detector's unknown/failure labels.
+- `examples/financial-crime/transfers.jsonl` and `expected.json`: 58 hand-authored
+  synthetic transfers in 12 labelled scenarios, including a deliberately benign
+  matching merchant settlement. Labels are scripted context, not actual crimes.
+- `examples/financial-crime/observed/`: actual isolated PostgreSQL 15.17 JSONB
+  import/export, Rust report, external-hash replay and scenario-check results.
+  No real account identifiers, customers or transaction histories are used.
 - Rust `sqlparser` supplies PostgreSQL tokenization. Detection policy remains
   original bounded lexical/structural logic, not full SQL semantics.
 - Dependencies retain their own licenses through Cargo metadata. The project is MIT.

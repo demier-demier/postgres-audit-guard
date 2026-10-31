@@ -11,6 +11,14 @@ bounded byte reader -> serde validation -> PostgreSQL SQL tokens -> rule signals
 
 ## Decisions
 
+The [transfer module](FINANCIAL-CRIME.md) is a separate bounded batch path:
+PostgreSQL JSONB export or authorized NDJSON -> strict typed records -> currency/account
+indices -> temporal amount patterns -> canonical source-hashed report. It stores
+at most 20,000 records from 16 MiB, sorts actual timestamp instants, and limits
+candidate work and output references. Monetary sums and ratio products use checked
+`u128`; evidence amounts are decimal strings. Report replay requires an external
+digest and exact canonical bytes from the current implementation.
+
 1. **Offline ingestion.** No database credential, network listener, server-side
    extension or SQL execution belongs in the scanner. Administrators control log
    collection outside this tool. A separate lab script operates only its new cluster.

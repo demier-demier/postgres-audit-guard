@@ -1,0 +1,172 @@
+{
+  "alerts": [
+    {
+      "accounts": [
+        "merchant-customer-01",
+        "merchant-customer-02",
+        "merchant-customer-03",
+        "merchant-settlement",
+        "merchant-store"
+      ],
+      "currency": "EUR",
+      "evidence": {
+        "collection_ends_at": "2026-01-15T09:10:00Z",
+        "distinct_senders": 3,
+        "incoming_records": 3,
+        "incoming_times_80": "8000000",
+        "incoming_total_minor": "100000",
+        "kind": "fan_in",
+        "outgoing_records": 1,
+        "outgoing_times_100": "8500000",
+        "outgoing_total_minor": "85000"
+      },
+      "interpretation": "Review this temporal concentration and redistribution pattern. Legitimate settlement can produce it; these records do not establish intent or trace specific funds.",
+      "rule_id": "TF001",
+      "source_record_ids": [
+        "merchant-01",
+        "merchant-02",
+        "merchant-03",
+        "merchant-04"
+      ],
+      "title": "Multiple senders followed by rapid aggregate outflow",
+      "window_end": "2026-01-15T09:20:00Z",
+      "window_start": "2026-01-15T09:00:00Z"
+    },
+    {
+      "accounts": [
+        "pass-collector",
+        "pass-sink-01",
+        "pass-sink-02",
+        "pass-source-01",
+        "pass-source-02",
+        "pass-source-03"
+      ],
+      "currency": "EUR",
+      "evidence": {
+        "collection_ends_at": "2026-01-15T10:10:00Z",
+        "distinct_senders": 3,
+        "incoming_records": 3,
+        "incoming_times_80": "8000000",
+        "incoming_total_minor": "100000",
+        "kind": "fan_in",
+        "outgoing_records": 2,
+        "outgoing_times_100": "9000000",
+        "outgoing_total_minor": "90000"
+      },
+      "interpretation": "Review this temporal concentration and redistribution pattern. Legitimate settlement can produce it; these records do not establish intent or trace specific funds.",
+      "rule_id": "TF001",
+      "source_record_ids": [
+        "pass-through-01",
+        "pass-through-02",
+        "pass-through-03",
+        "pass-through-04",
+        "pass-through-05"
+      ],
+      "title": "Multiple senders followed by rapid aggregate outflow",
+      "window_end": "2026-01-15T10:25:00Z",
+      "window_start": "2026-01-15T10:00:00Z"
+    },
+    {
+      "accounts": [
+        "circle-a",
+        "circle-b",
+        "circle-c"
+      ],
+      "currency": "EUR",
+      "evidence": {
+        "amounts_minor": [
+          "100000",
+          "95000",
+          "90000"
+        ],
+        "comparisons": [
+          {
+            "next_times_100": "9500000",
+            "previous_times_100": "10000000",
+            "previous_times_80": "8000000"
+          },
+          {
+            "next_times_100": "9000000",
+            "previous_times_100": "9500000",
+            "previous_times_80": "7600000"
+          }
+        ],
+        "kind": "circular"
+      },
+      "interpretation": "Review the ordered three-account amount pattern. A matching cycle does not establish that the same funds returned, common ownership or criminal intent.",
+      "rule_id": "TF002",
+      "source_record_ids": [
+        "circle-01",
+        "circle-02",
+        "circle-03"
+      ],
+      "title": "Three-account ordered circular transfer pattern",
+      "window_end": "2026-01-15T11:30:00Z",
+      "window_start": "2026-01-15T11:00:00Z"
+    },
+    {
+      "accounts": [
+        "bound-a",
+        "bound-b",
+        "bound-c"
+      ],
+      "currency": "EUR",
+      "evidence": {
+        "amounts_minor": [
+          "100000",
+          "80000",
+          "64000"
+        ],
+        "comparisons": [
+          {
+            "next_times_100": "8000000",
+            "previous_times_100": "10000000",
+            "previous_times_80": "8000000"
+          },
+          {
+            "next_times_100": "6400000",
+            "previous_times_100": "8000000",
+            "previous_times_80": "6400000"
+          }
+        ],
+        "kind": "circular"
+      },
+      "interpretation": "Review the ordered three-account amount pattern. A matching cycle does not establish that the same funds returned, common ownership or criminal intent.",
+      "rule_id": "TF002",
+      "source_record_ids": [
+        "circle-boundary-01",
+        "circle-boundary-02",
+        "circle-boundary-03"
+      ],
+      "title": "Three-account ordered circular transfer pattern",
+      "window_end": "2026-01-15T19:00:00Z",
+      "window_start": "2026-01-15T18:00:00Z"
+    }
+  ],
+  "input_records": 58,
+  "input_sha256": "3c4c200fac8c401e42a0146690690dafbe9b21c656ab2989479ae4644dac3c20",
+  "limitations": [
+    "Scenario screening only: no inference of fraud, money laundering, criminal intent, ownership, sanctions status or legal breach.",
+    "TF001 uses the maximal retrospective 60-minute inflow window at each distinct incoming instant, followed by the earliest qualifying outgoing prefix ending within 60 minutes of its oldest included inflow; it does not search every possible subset.",
+    "Windows can overlap and reuse records. Amount relationships do not trace fungible funds or establish that the same money returned.",
+    "Legitimate merchant settlements, treasury operations and other ordinary activity can match. A no-alert report does not establish that activity is safe.",
+    "Input order is normalized by timestamp instant then ID. Equal timestamps cannot establish a subsequent phase or leg. Currency codes are syntax-checked only; no exchange conversion or registry lookup is performed.",
+    "Only the supplied extract is evaluated. Missing, delayed, reversed or unrecorded transfers, account ownership and external context are not inferred. Monetary evidence is exact decimal strings in integer minor units."
+  ],
+  "policy": {
+    "circular_ratio_max_percent": 100,
+    "fan_in_min_senders": 3,
+    "flow_ratio_min_percent": 80,
+    "max_alerts": 1000,
+    "max_evidence_references": 50000,
+    "max_input_bytes": 16777216,
+    "max_records": 20000,
+    "max_report_bytes": 16777216,
+    "max_work_units": 5000000,
+    "strictly_ordered_phases": true,
+    "threshold_basis": "Arbitrary synthetic-lab policy, not a legal or regulatory threshold.",
+    "window_seconds": 3600
+  },
+  "schema": "transfer-triage/v1",
+  "work_units": 120
+}

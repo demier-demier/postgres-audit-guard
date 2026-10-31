@@ -23,6 +23,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: sudo apt-get update && sudo apt-get install -y postgresql-16
-      - run: python3 scripts/run_postgres_lab.py --bindir /usr/lib/postgresql/16/bin --work-dir "$RUNNER_TEMP/bank-lab"
+      - run: python3 scripts/run_postgres_lab.py --bindir /usr/lib/postgresql/16/bin --work-dir "$RUNNER_TEMP/bank-lab" --transfers examples/financial-crime/transfers.jsonl
       - run: cargo run --release --locked -- scan --input "$RUNNER_TEMP/bank-lab/postgres-cases.jsonl" --bundle "$RUNNER_TEMP/bank-case"
       - run: python3 scripts/check_lab.py "$RUNNER_TEMP/bank-case"
+      - run: cargo run --release --locked -- triage-transfers --input "$RUNNER_TEMP/bank-lab/postgres-transfers.jsonl" --output "$RUNNER_TEMP/transfer-report.json"
+      - run: python3 scripts/check_transfers.py "$RUNNER_TEMP/transfer-report.json"

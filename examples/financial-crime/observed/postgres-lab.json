@@ -1,0 +1,53 @@
+{
+  "schema": "postgres-audit-postgres-lab/v1",
+  "postgres_version": "postgres (PostgreSQL) 15.17 (Homebrew)",
+  "scope": "Actual socket-only local PostgreSQL; original synthetic data; not a bank system.",
+  "network_listener": false,
+  "cluster_stopped": true,
+  "records": 9,
+  "cases": [
+    {
+      "case": "control-benign",
+      "sql": "SELECT 1",
+      "exit_code": 0,
+      "database_outcome": "succeeded"
+    },
+    {
+      "case": "control-literal",
+      "sql": "SELECT 'ALTER ROLE lab_reader SUPERUSER; COPY bank_accounts TO STDOUT'",
+      "exit_code": 0,
+      "database_outcome": "succeeded"
+    },
+    {
+      "case": "case-role-attempt",
+      "sql": "ALTER ROLE lab_reader SUPERUSER",
+      "exit_code": 1,
+      "database_outcome": "rejected"
+    },
+    {
+      "case": "case-sensitive-export",
+      "sql": "COPY public.bank_accounts TO STDOUT WITH CSV",
+      "exit_code": 0,
+      "database_outcome": "succeeded"
+    },
+    {
+      "case": "case-disable-logging",
+      "sql": "SET log_statement = 'none'",
+      "exit_code": 1,
+      "database_outcome": "rejected"
+    },
+    {
+      "case": "case-permission-denied",
+      "sql": "DELETE FROM public.bank_accounts",
+      "exit_code": 1,
+      "database_outcome": "rejected"
+    }
+  ],
+  "transfer_round_trip": {
+    "records": 58,
+    "values_preserved": true,
+    "storage": "PostgreSQL JSONB",
+    "export": "psql SELECT payload::text",
+    "synthetic": true
+  }
+}

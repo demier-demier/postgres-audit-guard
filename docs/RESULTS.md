@@ -1,5 +1,32 @@
 # Observed validation — 2026-10-31
 
+## Financial-investigation extension
+
+The transfer workflow imported **58 original synthetic transactions into PostgreSQL
+15.17 JSONB**, exported them through `psql` and verified exact value preservation.
+Rust produced four alerts: two TF001 collection/outflow patterns and two TF002
+three-account returns. All **12 authored scenarios** matched their expected rule
+and source-record sets. One of the four alerts is an intentionally legitimate
+merchant settlement; eight other benign controls produced no alert. These are
+scenario outcomes, not accuracy estimates on real customers.
+
+The source-bound report passed external-SHA verification and exact canonical
+replay. See [captured PostgreSQL output](../examples/financial-crime/observed/postgres-transfers.jsonl),
+[analyst report](../examples/financial-crime/observed/report.json),
+[scenario evaluation](../examples/financial-crime/observed/evaluation.json) and
+[reproduction](FINANCIAL-CRIME.md). Source values remain synthetic even though the
+database import/export and Rust analysis are real execution.
+
+Independent review rejected ambiguous JSON reports with duplicate keys, required
+canonical byte replay, and corrected fractional-second alert ordering to compare
+typed instants. Tests also exercise actual default work/output caps, mixed currencies,
+equal timestamps, exact ratio boundaries and monetary sums larger than `u64`.
+
+After this extension, the Mac suite passed **52 library tests + 20 CLI tests = 72
+tests**, along with strict Clippy, formatting and Python lint. The original core
+also passed Linux/macOS/Windows CI and the PostgreSQL 16 lab at commit `92da31b`;
+the initial Windows unused-mut lint failure was corrected explicitly.
+
 ## Real PostgreSQL behavior
 
 PostgreSQL 15.17 ran in a fresh cluster on Apple M4 Pro / macOS 27.0.1,
@@ -31,7 +58,7 @@ and session identifiers and therefore changes the evidence anchor.
 
 ## Rust and failure tests
 
-On this Mac: **37 library tests + 8 process-level CLI tests passed**, including
+For the initial core milestone on this Mac: **37 library tests + 8 process-level CLI tests passed**, including
 property tests, bounded/fragmented input, malformed and duplicate fields, SQL
 literal controls, duration-prefixed records, partial output, no overwrite,
 altered/reordered/truncated evidence, wrong external anchors and error-message
@@ -44,6 +71,10 @@ positive. An overlong Unix-socket path initially prevented lab startup; the runn
 now rejects it before initialization with a shorter-path instruction.
 
 ## Bounded repetition benchmark
+
+These measurements describe the core log-analysis implementation at the initial
+publication `2639589`, before transfer screening was added. They are not transfer
+analysis throughput or a benchmark of every later revision.
 
 Release build, Apple M4 Pro, macOS 27.0.1; three runs per size. The original nine
 synthetic records are repeated exactly. Filesystem caches are warm; this tests

@@ -28,7 +28,9 @@ Do not run against directories writable by adversaries.
 - Ordinary `log_statement` records precede execution; duration records are
   completion logging. The tool does not infer committed transaction success or
   authorized intent from either format. Multiple rows are not distinct incidents.
-- No transaction-fraud, sanctions, money-laundering or identity attribution model.
+- These log rules do not model transaction fraud, sanctions or identity attribution.
+  The separate [transfer module](FINANCIAL-CRIME.md) provides bounded pattern
+  screening for human investigation, with its own declared schema and limits.
 
 ## Evidence limits
 
