@@ -2,10 +2,10 @@
   "schema": "analyst-case-local-validation/v1",
   "observed_date": "2026-11-03",
   "rust_library_tests": 63,
-  "rust_cli_tests": 30,
-  "rust_tests_total": 93,
+  "rust_cli_tests": 31,
+  "rust_tests_total": 94,
   "new_case_unit_tests": 11,
-  "new_case_cli_tests": 10,
+  "new_case_cli_tests": 11,
   "format": "passed",
   "clippy_all_targets": "passed",
   "release_build": "passed",
@@ -20,5 +20,7 @@
   "case_snapshots_verified": 6,
   "source_sha256": "3c4c200fac8c401e42a0146690690dafbe9b21c656ab2989479ae4644dac3c20",
   "source_matches_existing_public_fixture": true,
-  "scope": "Executed Rust and PostgreSQL integration over original synthetic transactions with scripted analyst review. No human identity attestation, fraud accuracy, production readiness or legal-validity claim."
+  "scope": "Executed Rust and PostgreSQL integration over original synthetic transactions with scripted analyst review. No human identity attestation, fraud accuracy, production readiness or legal-validity claim.",
+  "captured_examples_exact_byte_replay": "six passed",
+  "autocrlf_checkout": "Initial hash mismatch reproduced; explicit LF attributes restored exact-byte replay"
 }

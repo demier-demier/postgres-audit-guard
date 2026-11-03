@@ -13,13 +13,19 @@ open → referral-for-review case. Every earlier snapshot, source extract and or
 report remained unchanged. States and notes were scripted test context, not real
 analyst work. No account blocking, external reporting or crime classification ran.
 
-The Mac validation passed **63 library tests + 30 CLI tests = 93 tests**, including
-**21 new case tests**. New coverage includes wrong external anchors, duplicate/
+The Mac validation passed **63 library tests + 31 CLI tests = 94 tests**, including
+**22 new case tests**. New coverage includes wrong external anchors, duplicate/
 unknown JSON fields, rehashed structural tampering, cross-alert references,
 subsecond/offset timestamp ordering, private-note diagnostics, revision budgets,
 no-overwrite failures, valid historical snapshots and explicit branch behavior.
 Unix-specific tests also checked file modes and symlink rejection. Formatting,
 strict all-target Clippy and the release build passed.
+
+A fresh `core.autocrlf=true` checkout exposed a reproducibility failure: Git
+converted captured JSON to CRLF, changing its anchored bytes. Explicit LF
+attributes now preserve JSON/NDJSON evidence. The new exact-byte CLI regression
+verifies all six published snapshots against their recorded digests, and the
+controlled checkout successfully replayed the captured cases after the fix.
 
 Inspect [the snapshots and measured results](../examples/analyst-cases/) or
 [reproduce the workflow](ANALYST-CASES.md). These tests establish the bounded

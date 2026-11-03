@@ -1,0 +1,4 @@
+# Published evidence digests and canonical replay require identical bytes.
+*.json text eol=lf
+*.jsonl text eol=lf
+*.ndjson text eol=lf

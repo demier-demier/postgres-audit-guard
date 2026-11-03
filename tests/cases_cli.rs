@@ -545,3 +545,63 @@ fn two_human_revisions_can_branch_and_require_an_external_latest_head_registry()
     );
     f.assert_sources_unchanged();
 }
+
+#[test]
+fn captured_example_snapshots_replay_with_their_exact_recorded_byte_digests() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let examples = root.join("examples/analyst-cases");
+    let input = root.join("examples/financial-crime/observed/postgres-transfers.jsonl");
+    let report = root.join("examples/financial-crime/observed/report.json");
+    let observed = read_json(&examples.join("workflow-result.json"));
+    let report_anchor = observed["report_sha256"].as_str().unwrap();
+    assert_eq!(hash(&fs::read(&input).unwrap()), observed["input_sha256"]);
+    assert_eq!(hash(&fs::read(&report).unwrap()), report_anchor);
+
+    let mut snapshots: Vec<(PathBuf, String)> = observed["merchant_timeline"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| {
+            (
+                examples.join(entry["file"].as_str().unwrap()),
+                entry["sha256"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
+    assert_eq!(snapshots.len(), 4);
+    let referral = &observed["referral"];
+    let referral_v2 = examples.join(referral["file"].as_str().unwrap());
+    let referral_body = read_json(&referral_v2);
+    snapshots.push((
+        examples.join("referral-v1.json"),
+        referral_body["revisions"][1]["previous_snapshot_sha256"]
+            .as_str()
+            .unwrap()
+            .to_owned(),
+    ));
+    snapshots.push((referral_v2, referral["sha256"].as_str().unwrap().to_owned()));
+    assert_eq!(snapshots.len(), 6);
+
+    // No newline/encoding normalization is permitted. A checkout that rewrites
+    // these anchored artifacts must fail instead of silently generating new hashes.
+    for (case, anchor) in snapshots {
+        assert_eq!(hash(&fs::read(&case).unwrap()), anchor);
+        let checked = success(
+            binary("verify-analyst-case")
+                .arg("--input")
+                .arg(&input)
+                .arg("--report")
+                .arg(&report)
+                .arg("--report-anchor")
+                .arg(report_anchor)
+                .arg("--case")
+                .arg(&case)
+                .arg("--case-anchor")
+                .arg(&anchor)
+                .output()
+                .unwrap(),
+        );
+        assert_eq!(checked["verified"], true);
+        assert_eq!(checked["case_sha256"], anchor);
+    }
+}
