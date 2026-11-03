@@ -14,6 +14,10 @@ No employer/client source code, operational data or system names are used.
 - `examples/financial-crime/observed/`: actual isolated PostgreSQL 15.17 JSONB
   import/export, Rust report, external-hash replay and scenario-check results.
   No real account identifiers, customers or transaction histories are used.
+- `examples/analyst-cases/`: actual Rust CLI snapshots and checks over the same
+  original synthetic transactions. Analyst tokens, review times and note contents
+  are scripted fixture context, not authenticated staff or real investigations.
+  Adjacent digest files are reproduction outputs, not independent trusted storage.
 - Rust `sqlparser` supplies PostgreSQL tokenization. Detection policy remains
   original bounded lexical/structural logic, not full SQL semantics.
 - Dependencies retain their own licenses through Cargo metadata. The project is MIT.

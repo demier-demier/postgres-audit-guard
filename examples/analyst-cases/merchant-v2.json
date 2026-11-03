@@ -1,0 +1,38 @@
+{
+  "alert_index": 0,
+  "alert_sha256": "81671b98cfcecb0d36e039861c73c72acaeea839389ab4d89b3be6c3578c8dd7",
+  "case_id": "synthetic-merchant-review",
+  "input_sha256": "3c4c200fac8c401e42a0146690690dafbe9b21c656ab2989479ae4644dac3c20",
+  "report_sha256": "087560af4325dfc1f193eaf7be4e2da9c26faee52c42748fbbd42e71a8eea60a",
+  "revisions": [
+    {
+      "actor": "synthetic-analyst-01",
+      "disposition": "open",
+      "event_sha256": "f8e85ef146122a518bec180df9aca0373d64957cf3aa1351a54f854e4c4287d4",
+      "evidence_refs": [
+        "merchant-01",
+        "merchant-04"
+      ],
+      "previous_event_sha256": null,
+      "previous_snapshot_sha256": null,
+      "reason": "Scripted fixture review: merchant settlement matches TF001; business context requires human review.",
+      "timestamp": "2026-11-03T12:01:00Z",
+      "version": 1
+    },
+    {
+      "actor": "synthetic-analyst-01",
+      "disposition": "needs_information",
+      "event_sha256": "cbcd413976920971fe24ad14be00e07d6c93d7baabe1a0d1682de37c87cd57ba",
+      "evidence_refs": [
+        "merchant-01",
+        "merchant-04"
+      ],
+      "previous_event_sha256": "f8e85ef146122a518bec180df9aca0373d64957cf3aa1351a54f854e4c4287d4",
+      "previous_snapshot_sha256": "aecb19ced590cb3d37b9df03047a97f999d0121c15a3c71a3e2ceb1b4664877b",
+      "reason": "Scripted request for settlement context; the amount pattern alone establishes no misconduct.",
+      "timestamp": "2026-11-03T12:02:00Z",
+      "version": 2
+    }
+  ],
+  "schema": "transfer-case/v1"
+}

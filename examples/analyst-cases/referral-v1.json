@@ -1,0 +1,23 @@
+{
+  "alert_index": 1,
+  "alert_sha256": "192d644b16a00b74c55a1076e96ffe8d529e11e59e56da8751114c6a3ea07425",
+  "case_id": "synthetic-referral",
+  "input_sha256": "3c4c200fac8c401e42a0146690690dafbe9b21c656ab2989479ae4644dac3c20",
+  "report_sha256": "087560af4325dfc1f193eaf7be4e2da9c26faee52c42748fbbd42e71a8eea60a",
+  "revisions": [
+    {
+      "actor": "synthetic-analyst-02",
+      "disposition": "open",
+      "event_sha256": "2f7f1c7ff28c75aad7e5f29e0195eecb365ca9cf130d65a560f02e62fcafdeff",
+      "evidence_refs": [
+        "pass-through-01"
+      ],
+      "previous_event_sha256": null,
+      "previous_snapshot_sha256": null,
+      "reason": "Scripted referral for additional review of a synthetic pattern; no crime finding or automatic action.",
+      "timestamp": "2026-11-03T12:10:00Z",
+      "version": 1
+    }
+  ],
+  "schema": "transfer-case/v1"
+}

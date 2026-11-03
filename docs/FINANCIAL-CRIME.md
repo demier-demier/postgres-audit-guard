@@ -47,7 +47,8 @@ The Rust analyzer never connects to the database. For an existing deployment,
 collection, permissions, schema mapping and approval remain with its administrator.
 
 The report includes original record IDs, account links, time ranges, calculations,
-policy parameters and input SHA-256. Publication is atomic and refuses replacement.
+policy parameters and input SHA-256. Publication uses a synced temporary file and refuses destination replacement;
+[platform persistence limits](ANALYST-CASES.md#format-persistence-and-limits) apply.
 Verification checks an independently retained digest, then repeats analysis against
 the exact source bytes and requires byte-for-byte canonical output from the same
 analysis implementation. Formatting changes, duplicate keys and policy changes
@@ -83,3 +84,11 @@ conceal a limitation instead of evaluating it.
 Other controls include ordinary payments, cross-currency paths, late returns,
 insufficient senders, amount-ratio boundaries and simultaneous timestamps. Scenario
 checks are not real-world precision/recall or estimates of financial-crime prevalence.
+
+
+## From a signal to a review timeline
+
+Use [analyst cases](ANALYST-CASES.md) to preserve human dispositions, reasons and
+selected source references alongside this report. An explained or reopened case
+does not suppress or change the detector's original alert. Case snapshots require
+the exact source, external report digest and separate case digest for replay.

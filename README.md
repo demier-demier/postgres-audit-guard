@@ -27,6 +27,16 @@ cargo run --release --locked -- triage-transfers \
 python3 scripts/check_transfers.py transfer-report.json
 ```
 
+## Preserve the analyst decision
+
+[Versioned analyst cases](docs/ANALYST-CASES.md) bind each human review to the exact
+source extract and transfer report. Open, request information, record an
+explanation or reopen a case while preserving every previous revision and the
+original alert. A separate digest and canonical replay check the stored timeline.
+The [scripted merchant example](examples/analyst-cases/) keeps its legitimate
+settlement alert visible throughout review; no account action or authority report
+is automated. Actor labels are not authenticated identities.
+
 ## Try the real local database case
 
 ```sh

@@ -66,3 +66,20 @@ records, SQL literal/comment controls, property tests, evidence corruption and C
 failure behavior. CI also generates fresh PostgreSQL logs and checks four positive
 scenarios and two benign controls. That six-case corpus is not a precision/recall
 measurement or a production readiness claim.
+
+## Evidence-bound analyst snapshots
+
+The [analyst case path](ANALYST-CASES.md) consumes an independently anchored,
+canonically replayed transfer report and the same source extract. It binds one
+alert by index and full digest, then chains explicit human review events to both
+that immutable context and the preceding snapshot. A new file is published for
+each revision; past files are preserved. There is no shared mutable head, network
+service or automatic response. Canonical decoding, bounded notes/references,
+strict UTC instant ordering and an external case digest are checked before append.
+
+This choice keeps offline replay and inspection possible without new runtime
+dependencies. It trades centralized concurrency control and authentication for an
+explicit requirement to keep trusted current-head anchors in an existing system.
+Files are content-synced and persisted without replacement, but parent-directory
+sync and crash-atomic head updates are not provided. See the threat model and
+precise persistence limits in the case guide.

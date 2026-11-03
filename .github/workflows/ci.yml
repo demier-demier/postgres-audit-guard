@@ -28,3 +28,4 @@ jobs:
       - run: python3 scripts/check_lab.py "$RUNNER_TEMP/bank-case"
       - run: cargo run --release --locked -- triage-transfers --input "$RUNNER_TEMP/bank-lab/postgres-transfers.jsonl" --output "$RUNNER_TEMP/transfer-report.json"
       - run: python3 scripts/check_transfers.py "$RUNNER_TEMP/transfer-report.json"
+      - run: python3 scripts/check_analyst_case.py --input "$RUNNER_TEMP/bank-lab/postgres-transfers.jsonl" --report "$RUNNER_TEMP/transfer-report.json" --work-dir "$RUNNER_TEMP/analyst-review"

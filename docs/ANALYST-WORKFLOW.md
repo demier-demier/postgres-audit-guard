@@ -25,6 +25,14 @@ the collection and integrity mechanisms also apply to other PostgreSQL systems.
    anchor. Retention, access control, deletion, custody and legal processes remain
    the operator's responsibilities.
 
+## Transfer-case review
+
+For an authorized transfer extract, follow the [versioned case guide](ANALYST-CASES.md).
+Record the selected report/alert, reasons and references as explicit human review
+assertions. An explained legitimate settlement remains in the detector report;
+review status is separate from detection. Preserve prior snapshots and maintain
+trusted current-head anchors and analyst authorization in your existing system.
+
 ## Next integration milestone
 
 Run an actual controlled Filebeat/Elasticsearch ingest, validate mappings and

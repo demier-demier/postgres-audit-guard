@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use postgres_audit_guard::{detection, ecs, evidence, ingest, transfers};
+use postgres_audit_guard::{cases, detection, ecs, evidence, ingest, transfers};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
@@ -21,8 +21,93 @@ struct Args {
     #[command(subcommand)]
     command: Command,
 }
+
+#[derive(clap::Args)]
+struct CaseSource {
+    #[arg(long)]
+    input: PathBuf,
+    #[arg(long)]
+    report: PathBuf,
+    /// Obtain this digest through an independently trusted channel.
+    #[arg(long)]
+    report_anchor: String,
+}
+
+#[derive(clap::Args)]
+struct ReviewNote {
+    /// Pseudonymous analyst token; not authenticated by this offline tool.
+    #[arg(long)]
+    actor: String,
+    /// Analyst-supplied RFC3339 instant; not a trusted timestamp service.
+    #[arg(long)]
+    at: String,
+    /// UTF-8 single-paragraph note, at most 2048 bytes (kept out of argv).
+    #[arg(long)]
+    reason_file: PathBuf,
+    /// Repeat for each source record cited from this case's selected alert.
+    #[arg(long = "evidence-ref", required = true)]
+    evidence_refs: Vec<String>,
+}
+
+#[derive(Clone, clap::ValueEnum)]
+enum ReviewDisposition {
+    Open,
+    NeedsInformation,
+    ClosedExplained,
+    EscalatedForReview,
+}
+
+impl From<ReviewDisposition> for cases::Disposition {
+    fn from(value: ReviewDisposition) -> Self {
+        match value {
+            ReviewDisposition::Open => Self::Open,
+            ReviewDisposition::NeedsInformation => Self::NeedsInformation,
+            ReviewDisposition::ClosedExplained => Self::ClosedExplained,
+            ReviewDisposition::EscalatedForReview => Self::EscalatedForReview,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum Command {
+    /// Open an immutable human-review case tied to a verified transfer alert.
+    OpenAnalystCase {
+        #[command(flatten)]
+        source: CaseSource,
+        #[arg(long)]
+        case_id: String,
+        /// Zero-based index in the externally anchored canonical report.
+        #[arg(long)]
+        alert_index: usize,
+        #[command(flatten)]
+        note: ReviewNote,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Append a human disposition to a new snapshot, preserving the prior file.
+    ReviseAnalystCase {
+        #[command(flatten)]
+        source: CaseSource,
+        #[arg(long)]
+        case: PathBuf,
+        #[arg(long)]
+        case_anchor: String,
+        #[arg(long, value_enum)]
+        disposition: ReviewDisposition,
+        #[command(flatten)]
+        note: ReviewNote,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Check a case's source binding, timeline, canonical bytes and external hash.
+    VerifyAnalystCase {
+        #[command(flatten)]
+        source: CaseSource,
+        #[arg(long)]
+        case: PathBuf,
+        #[arg(long)]
+        case_anchor: String,
+    },
     /// Find explainable transfer patterns for human review; never infer a crime.
     TriageTransfers {
         #[arg(long)]
@@ -68,6 +153,10 @@ enum Command {
 }
 
 fn bounded_file(path: &Path) -> Result<Vec<u8>> {
+    bounded_file_with_limit(path, transfers::MAX_INPUT_BYTES)
+}
+
+fn bounded_file_with_limit(path: &Path, limit: usize) -> Result<Vec<u8>> {
     anyhow::ensure!(
         std::fs::symlink_metadata(path)?.file_type().is_file(),
         "Input must be a regular non-symlink file"
@@ -75,16 +164,49 @@ fn bounded_file(path: &Path) -> Result<Vec<u8>> {
     let file = File::open(path)?;
     anyhow::ensure!(file.metadata()?.is_file(), "Input must be a regular file");
     let mut bytes = Vec::new();
-    file.take(transfers::MAX_INPUT_BYTES as u64 + 1)
-        .read_to_end(&mut bytes)?;
-    anyhow::ensure!(
-        bytes.len() <= transfers::MAX_INPUT_BYTES,
-        "Input exceeds resource limit"
-    );
+    file.take(limit as u64 + 1).read_to_end(&mut bytes)?;
+    anyhow::ensure!(bytes.len() <= limit, "Input exceeds resource limit");
     Ok(bytes)
 }
 
-fn atomic_json_output(path: &Path, bytes: &[u8]) -> Result<()> {
+fn revision_input(
+    note: ReviewNote,
+    disposition: cases::Disposition,
+) -> Result<cases::RevisionInput> {
+    let bytes = bounded_file_with_limit(&note.reason_file, 2048)?;
+    let reason = std::str::from_utf8(&bytes)
+        .map_err(|_| anyhow::anyhow!("Review note must be valid UTF-8"))?
+        .trim_end_matches(['\r', '\n'])
+        .to_owned();
+    Ok(cases::RevisionInput {
+        actor: note.actor,
+        timestamp: note.at,
+        disposition,
+        reason,
+        evidence_refs: note.evidence_refs,
+    })
+}
+
+fn write_case(path: &Path, snapshot: cases::CaseSnapshot) -> Result<()> {
+    let bytes = cases::canonical_bytes(&snapshot)?;
+    publish_json_output(path, &bytes)?;
+    println!("{}", case_summary(&snapshot, &bytes, false));
+    Ok(())
+}
+
+fn case_summary(snapshot: &cases::CaseSnapshot, bytes: &[u8], verified: bool) -> serde_json::Value {
+    let revision = snapshot
+        .revisions
+        .last()
+        .expect("validated case is nonempty");
+    json!({
+        "schema": "analyst-case-result/v1", "case_sha256": cases::digest(bytes),
+        "revision": revision.version, "disposition": revision.disposition, "verified": verified,
+        "note": "Keep this digest independently. Analyst assertions are not authenticated identities, proof of crime or automatic actions."
+    })
+}
+
+fn publish_json_output(path: &Path, bytes: &[u8]) -> Result<()> {
     anyhow::ensure!(!path.exists(), "Refusing to overwrite output");
     let parent = path
         .parent()
@@ -99,6 +221,58 @@ fn atomic_json_output(path: &Path, bytes: &[u8]) -> Result<()> {
 
 fn main() -> Result<()> {
     match Args::parse().command {
+        Command::OpenAnalystCase {
+            source,
+            case_id,
+            alert_index,
+            note,
+            output,
+        } => {
+            let input = bounded_file(&source.input)?;
+            let report = bounded_file(&source.report)?;
+            let snapshot = cases::create(
+                &input,
+                &report,
+                &source.report_anchor,
+                &case_id,
+                alert_index,
+                revision_input(note, cases::Disposition::Open)?,
+            )?;
+            write_case(&output, snapshot)?;
+        }
+        Command::ReviseAnalystCase {
+            source,
+            case,
+            case_anchor,
+            disposition,
+            note,
+            output,
+        } => {
+            let input = bounded_file(&source.input)?;
+            let report = bounded_file(&source.report)?;
+            let previous = bounded_file(&case)?;
+            let snapshot = cases::append(
+                &input,
+                &report,
+                &source.report_anchor,
+                &previous,
+                &case_anchor,
+                revision_input(note, disposition.into())?,
+            )?;
+            write_case(&output, snapshot)?;
+        }
+        Command::VerifyAnalystCase {
+            source,
+            case,
+            case_anchor,
+        } => {
+            let input = bounded_file(&source.input)?;
+            let report = bounded_file(&source.report)?;
+            let bytes = bounded_file(&case)?;
+            let snapshot =
+                cases::verify(&input, &report, &source.report_anchor, &bytes, &case_anchor)?;
+            println!("{}", case_summary(&snapshot, &bytes, true));
+        }
         Command::TriageTransfers { input, output } => {
             let source = bounded_file(&input)?;
             let report = transfers::analyze(&source)?;
@@ -109,7 +283,7 @@ fn main() -> Result<()> {
                 bytes.len() <= transfers::MAX_INPUT_BYTES,
                 "Report exceeds resource limit"
             );
-            atomic_json_output(&output, &bytes)?;
+            publish_json_output(&output, &bytes)?;
             println!(
                 "{}",
                 json!({"report_sha256":hex::encode(Sha256::digest(&bytes)),

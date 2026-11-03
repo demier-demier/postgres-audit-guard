@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+pub mod cases;
 pub mod detection;
 pub mod ecs;
 pub mod evidence;

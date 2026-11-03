@@ -1,6 +1,33 @@
-# Observed validation — 2026-10-31
+# Observed validation
 
-## Financial-investigation extension
+## Analyst review snapshots — 2026-11-03
+
+A fresh socket-only PostgreSQL 15.17 lab round-tripped the same **58 synthetic
+transfers**, preserving every value and stopping its cluster afterward. The
+canonical Rust report reproduced the prior four alerts across 12 authored
+scenarios, including the intentionally legitimate matching merchant settlement.
+
+The new CLI then persisted and verified **six case snapshots** in separate
+processes: merchant open → needs information → explained → reopened, and a separate
+open → referral-for-review case. Every earlier snapshot, source extract and original
+report remained unchanged. States and notes were scripted test context, not real
+analyst work. No account blocking, external reporting or crime classification ran.
+
+The Mac validation passed **63 library tests + 30 CLI tests = 93 tests**, including
+**21 new case tests**. New coverage includes wrong external anchors, duplicate/
+unknown JSON fields, rehashed structural tampering, cross-alert references,
+subsecond/offset timestamp ordering, private-note diagnostics, revision budgets,
+no-overwrite failures, valid historical snapshots and explicit branch behavior.
+Unix-specific tests also checked file modes and symlink rejection. Formatting,
+strict all-target Clippy and the release build passed.
+
+Inspect [the snapshots and measured results](../examples/analyst-cases/) or
+[reproduce the workflow](ANALYST-CASES.md). These tests establish the bounded
+implementation's observed behavior, not authenticated analyst identities, latest-head
+consensus, real-world fraud accuracy, crash-proof storage or production readiness.
+Remote platform results are reported by the actual CI run separately.
+
+## Financial-investigation extension — 2026-10-31
 
 The transfer workflow imported **58 original synthetic transactions into PostgreSQL
 15.17 JSONB**, exported them through `psql` and verified exact value preservation.

@@ -1,0 +1,43 @@
+{
+  "schema": "analyst-case-synthetic-workflow/v1",
+  "scope": "Actual Rust CLI execution; original synthetic transfers and scripted unverified analyst identities/notes. Not real casework, accuracy or proof of crime.",
+  "input_sha256": "3c4c200fac8c401e42a0146690690dafbe9b21c656ab2989479ae4644dac3c20",
+  "report_sha256": "087560af4325dfc1f193eaf7be4e2da9c26faee52c42748fbbd42e71a8eea60a",
+  "merchant_timeline": [
+    {
+      "file": "merchant-v1.json",
+      "sha256": "aecb19ced590cb3d37b9df03047a97f999d0121c15a3c71a3e2ceb1b4664877b",
+      "revision": 1,
+      "disposition": "open"
+    },
+    {
+      "file": "merchant-v2.json",
+      "sha256": "5be257c68a2f526e2624ce170cd7b8dc72a7f6ba6c269b6948f5088c0b19f550",
+      "revision": 2,
+      "disposition": "needs_information"
+    },
+    {
+      "file": "merchant-v3.json",
+      "sha256": "8d581054a7a07c7697e478051160fed8f328eecb77e3a2f3a24c3d2ba5b180c8",
+      "revision": 3,
+      "disposition": "closed_explained"
+    },
+    {
+      "file": "merchant-v4.json",
+      "sha256": "97dfe013a41d0e0286ea43e32d218d1974fb6f312df9a7887bfd4981403185b8",
+      "revision": 4,
+      "disposition": "open"
+    }
+  ],
+  "referral": {
+    "file": "referral-v2.json",
+    "sha256": "d6c49f210e0f29a88261fa0b51241ca179f9d0660c7ab6b5a6f9019b44a41488",
+    "disposition": "escalated_for_review"
+  },
+  "original_alerts_preserved": 4,
+  "original_input_and_report_unchanged": true,
+  "automatic_account_or_reporting_actions": 0,
+  "verified_case_snapshots": 6,
+  "verification": "All four merchant snapshots and both referral snapshots verified in separate processes.",
+  "anchor_note": "Digests beside files are reproduction outputs, not an independent trusted anchor service."
+}
