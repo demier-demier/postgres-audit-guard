@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use postgres_audit_guard::{cases, detection, ecs, evidence, ingest, transfers};
+use postgres_audit_guard::{cases, detection, ecs, elastic, evidence, ingest, transfers};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
@@ -70,6 +70,13 @@ impl From<ReviewDisposition> for cases::Disposition {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Validate and deduplicate a bounded ECS export before a controlled Filebeat handoff.
+    PrepareElastic {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Open an immutable human-review case tied to a verified transfer alert.
     OpenAnalystCase {
         #[command(flatten)]
@@ -221,6 +228,12 @@ fn publish_json_output(path: &Path, bytes: &[u8]) -> Result<()> {
 
 fn main() -> Result<()> {
     match Args::parse().command {
+        Command::PrepareElastic { input, output } => {
+            let source = bounded_file_with_limit(&input, elastic::MAX_INPUT_BYTES)?;
+            let (bytes, summary) = elastic::prepare(&source)?;
+            publish_json_output(&output, &bytes)?;
+            println!("{}", serde_json::to_string(&summary)?);
+        }
         Command::OpenAnalystCase {
             source,
             case_id,

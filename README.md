@@ -71,6 +71,25 @@ existing database. Supply `--bindir` if PostgreSQL tools are outside `PATH`.
 No server packages or settings are changed by the script. The lab runner is
 Unix-only; CI is configured for Rust unit/integration tests on Linux, macOS and Windows.
 
+## Deliver minimized alerts through existing tools
+
+The optional [Filebeat/Elasticsearch handoff](docs/ELASTIC.md) validates an entire
+ECS batch before publication. `prepare-elastic` rejects malformed or injected
+fields and conflicting same-ID records, and counts equivalent duplicates. The
+isolated integration harness checks stored documents and versions through actual
+Filebeat ingestion, collector restart and fresh-registry replay. It keeps host
+names, log paths, raw SQL and captured identities out of indexed documents.
+
+```sh
+cargo run --release --locked -- prepare-elastic \
+  --input alerts.ndjson --output validated.ndjson
+```
+
+The mutable search index remains separate from sealed source evidence. Stable
+IDs are not writer authentication, exactly-once processing or cross-batch
+conflict protection. The lab uses original synthetic data and performs no
+automatic account action.
+
 ## What the code demonstrates
 
 - Bounded streaming ingestion: record, file and count limits enforced before

@@ -1,0 +1,16 @@
+[
+  {
+    "component": "elasticsearch",
+    "version": "8.19.6",
+    "archive_url": "https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-8.19.6-darwin-aarch64.tar.gz",
+    "sha512": "5e7e2b8e2548717070df9539bc3a40a75c98862ae3851f914209531b6a293d85b45a1899543a6bef8b99b077ce0be1c980c406db2a2f730987df6168b4828ad9",
+    "bytes": 501139180
+  },
+  {
+    "component": "filebeat",
+    "version": "8.19.6",
+    "archive_url": "https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-8.19.6-darwin-aarch64.tar.gz",
+    "sha512": "28cafc43c08ba9a7f830dd03ee8f9b371de744a6c23375627e891a3aabe533c3ec01a164f333f9be715ce7dfa0ca8178f0c7fdd2cff9be4f08cb54b8bc24d189",
+    "bytes": 48190877
+  }
+]

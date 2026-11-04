@@ -83,3 +83,23 @@ explicit requirement to keep trusted current-head anchors in an existing system.
 Files are content-synced and persisted without replacement, but parent-directory
 sync and crash-atomic head updates are not provided. See the threat model and
 precise persistence limits in the case guide.
+
+## Optional Elastic handoff
+
+`export-ecs -> prepare-elastic -> Filebeat -> Elasticsearch` adds a bounded typed
+validation boundary before the existing collector. Canonical documents preserve
+source-hash/rule identifiers and first-seen order. Entire-batch validation precedes
+no-clobber publication, so malformed later rows do not expose a partial batch.
+Equivalent duplicates collapse; conflicting same-ID rows in the batch fail.
+
+Filebeat retains document IDs while removing its extra host/path metadata. The
+sink uses strict mappings and a validation pipeline. The local harness starts
+only a fresh loopback cluster, and measures content, document versions and
+observed HTTP 409 duplicate counters across registry restarts and replay. The
+collector uses create-only operations, preserving existing IDs and their payloads. This is an optional integration: offline evidence
+and analyst-case verification have no service dependency.
+
+The searchable index is mutable and outside the evidence seal. Deterministic IDs
+do not authenticate the writer, detect all cross-batch conflicts, or establish
+exactly-once processing. See [the integration guide](ELASTIC.md) for the deployment
+boundary and explicit limits.

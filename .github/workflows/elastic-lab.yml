@@ -1,0 +1,61 @@
+name: Real Filebeat and Elasticsearch integration
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/**'
+      - 'integrations/elastic/**'
+      - 'scripts/run_elastic_lab.py'
+      - 'tests/test_elastic_lab.py'
+      - 'Cargo.*'
+      - '.github/workflows/elastic-lab.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'integrations/elastic/**'
+      - 'scripts/run_elastic_lab.py'
+      - 'tests/test_elastic_lab.py'
+      - 'Cargo.*'
+      - '.github/workflows/elastic-lab.yml'
+permissions:
+  contents: read
+jobs:
+  controlled-ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --locked
+      - run: python3 -m unittest discover -s tests -p test_elastic_lab.py
+      - name: Fetch pinned vendor archives and verify vendor SHA-512 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/elastic-vendor"
+          cd "$RUNNER_TEMP/elastic-vendor"
+          for product in elasticsearch filebeat; do
+            if [ "$product" = filebeat ]; then
+              archive="filebeat-8.19.6-linux-x86_64.tar.gz"
+              base="https://artifacts.elastic.co/downloads/beats/filebeat"
+            else
+              archive="elasticsearch-8.19.6-linux-x86_64.tar.gz"
+              base="https://artifacts.elastic.co/downloads/elasticsearch"
+            fi
+            curl --fail --location --retry 3 "$base/$archive" --output "$archive"
+            curl --fail --location --retry 3 "$base/$archive.sha512" --output "$archive.sha512"
+            sha512sum --check "$archive.sha512"
+            tar -xzf "$archive"
+          done
+      - name: Prove ingestion, persistent registry, replay and invalid-input rejection
+        run: >-
+          python3 scripts/run_elastic_lab.py
+          --elasticsearch-home "$RUNNER_TEMP/elastic-vendor/elasticsearch-8.19.6"
+          --filebeat-home "$RUNNER_TEMP/elastic-vendor/filebeat-8.19.6-linux-x86_64"
+          --work-dir "$RUNNER_TEMP/elastic-controlled-lab"
+          --binary target/release/postgres-audit-guard
+      - uses: actions/upload-artifact@v4
+        with:
+          name: elastic-integration-result
+          path: ${{ runner.temp }}/elastic-controlled-lab/result.json
+          if-no-files-found: error

@@ -1,0 +1,97 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "index.final_pipeline": "postgres-audit-guard-v1"
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "@timestamp": {
+        "type": "date",
+        "format": "strict_date_optional_time_nanos"
+      },
+      "ecs": {
+        "type": "object",
+        "dynamic": "strict",
+        "properties": {
+          "version": {
+            "type": "keyword"
+          }
+        }
+      },
+      "event": {
+        "type": "object",
+        "dynamic": "strict",
+        "properties": {
+          "kind": {
+            "type": "keyword"
+          },
+          "category": {
+            "type": "keyword"
+          },
+          "type": {
+            "type": "keyword"
+          },
+          "outcome": {
+            "type": "keyword"
+          },
+          "module": {
+            "type": "keyword"
+          },
+          "dataset": {
+            "type": "keyword"
+          },
+          "id": {
+            "type": "keyword"
+          },
+          "hash": {
+            "type": "keyword"
+          },
+          "action": {
+            "type": "keyword"
+          }
+        }
+      },
+      "rule": {
+        "type": "object",
+        "dynamic": "strict",
+        "properties": {
+          "id": {
+            "type": "keyword"
+          },
+          "name": {
+            "type": "keyword"
+          },
+          "version": {
+            "type": "keyword"
+          },
+          "license": {
+            "type": "keyword"
+          }
+        }
+      },
+      "postgres_audit_guard": {
+        "type": "object",
+        "dynamic": "strict",
+        "properties": {
+          "schema": {
+            "type": "keyword"
+          },
+          "severity": {
+            "type": "keyword"
+          },
+          "sqlstate": {
+            "type": "keyword"
+          },
+          "scope": {
+            "type": "keyword"
+          },
+          "raw_sql_included": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "schema": "elastic-lab-result/v1",
+  "elasticsearch_version": "8.19.6",
+  "filebeat_version": "8.19.6",
+  "license": "basic",
+  "fixture": "examples/postgres15-local.jsonl",
+  "fixture_sha256": "b816a17d90d7d810a2f73912bce667f2639f009025eea62d2516016add702df1",
+  "prepared_export": {
+    "schema": "elastic-prepare-result/v1",
+    "input_records": 8,
+    "unique_documents": 8,
+    "duplicate_records": 0,
+    "input_sha256": "0b73f5babd3c3ea8ea24b08aacaf63dd0f82b06a77eccd80f78c185e47f7326e",
+    "output_sha256": "0b73f5babd3c3ea8ea24b08aacaf63dd0f82b06a77eccd80f78c185e47f7326e",
+    "sealed": false,
+    "note": "Validated derived export, not authenticated evidence. Retain raw records and trusted anchors separately; signals require human review."
+  },
+  "stages": [
+    {
+      "stage": "initial-ingest",
+      "documents": 8,
+      "version_per_document": 1,
+      "acknowledged_creates": 8,
+      "observed_duplicate_conflicts": 0,
+      "sources_match": true
+    },
+    {
+      "stage": "persistent-registry-append",
+      "documents": 8,
+      "version_per_document": 1,
+      "acknowledged_creates": 0,
+      "observed_duplicate_conflicts": 8,
+      "sources_match": true
+    },
+    {
+      "stage": "fresh-registry-replay",
+      "documents": 8,
+      "version_per_document": 1,
+      "acknowledged_creates": 0,
+      "observed_duplicate_conflicts": 16,
+      "sources_match": true
+    },
+    {
+      "stage": "same-id-changed-payload",
+      "documents": 8,
+      "version_per_document": 1,
+      "acknowledged_creates": 0,
+      "observed_duplicate_conflicts": 1,
+      "sources_match": true
+    }
+  ],
+  "prepare_rejections": [
+    "unexpected-field",
+    "invalid-id",
+    "unsupported-outcome",
+    "raw-sql-flag",
+    "malformed-json",
+    "duplicate-json-key"
+  ],
+  "sink_rejections": [
+    {
+      "case": "unknown-field",
+      "http_status": 400
+    },
+    {
+      "case": "invalid-timestamp",
+      "http_status": 400
+    },
+    {
+      "case": "missing-required-field",
+      "http_status": 400
+    },
+    {
+      "case": "unsupported-outcome",
+      "http_status": 400
+    },
+    {
+      "case": "raw-sql-flag",
+      "http_status": 400
+    },
+    {
+      "case": "document-id-mismatch",
+      "http_status": 400
+    }
+  ],
+  "altered_same_id_create_rejected": true,
+  "documents": 8,
+  "outcomes": {
+    "failure": 5,
+    "unknown": 3
+  },
+  "indexed_sources_sha256": "950dcd127cb7383669ad18d820c9fc07409d2231b85a2ffdaacb4998956ba439",
+  "scope": "Real local Filebeat/Elasticsearch integration over original synthetic PostgreSQL records; deterministic rules, not AI inference.",
+  "limitations": [
+    "Loopback-only trusted-host lab has no TLS, authentication or tenant isolation; not a production deployment.",
+    "One fixed index; replay across index rotation or policy versions is not deduplicated.",
+    "Create-only Filebeat output preserves existing IDs. A 409 duplicate cannot distinguish identical replay from conflicting same-ID content; no cross-batch conflict registry is provided.",
+    "A privileged direct API writer can still update or delete indexed data; index authorization and external evidence anchors are operator responsibilities.",
+    "The Rust preflight checks hash-derived IDs; the sink checks shape and ID equality, not source-byte authenticity.",
+    "Index documents are minimized derivatives; sealed evidence and human-review case snapshots remain separate."
+  ],
+  "owned_processes_stopped": true,
+  "selected_loopback_ports_closed": true
+}

@@ -1,0 +1,85 @@
+{
+  "description": "Bounded ECS export validation for controlled ingestion; no source authentication or automatic response",
+  "processors": [
+    {
+      "script": {
+        "lang": "painless",
+        "source": "for (def group : params.groups.entrySet()) {\n  if (!(ctx[group.getKey()] instanceof Map)) { throw new IllegalArgumentException('invalid export group'); }\n  def value = ctx[group.getKey()];\n  if (value.size() != group.getValue().size()) { throw new IllegalArgumentException('invalid export fields'); }\n  for (def field : group.getValue()) {\n    if (!value.containsKey(field) || value[field] == null) { throw new IllegalArgumentException('missing export field'); }\n  }\n}\nfor (def group : params.fixed.entrySet()) {\n  for (def field : group.getValue().entrySet()) {\n    if (!field.getValue().equals(ctx[group.getKey()][field.getKey()])) { throw new IllegalArgumentException('invalid export constant'); }\n  }\n}\nif (!(ctx['@timestamp'] instanceof String)) { throw new IllegalArgumentException('invalid export timestamp'); }\nfor (def field : ['id','hash']) {\n  def value = ctx.event[field];\n  if (!(value instanceof String) || value.length() != 64) { throw new IllegalArgumentException('invalid export digest'); }\n  for (int i = 0; i < value.length(); i++) {\n    if ('0123456789abcdef'.indexOf(value.substring(i,i+1)) < 0) { throw new IllegalArgumentException('invalid export digest'); }\n  }\n}\nif (!ctx.event.id.equals(ctx['_id'])) { throw new IllegalArgumentException('document id differs from event id'); }\nif (!params.rules.contains(ctx.rule.id) || !ctx.rule.id.equals(ctx.event.action)) { throw new IllegalArgumentException('invalid export rule'); }\nif (!params.outcomes.contains(ctx.event.outcome) || !params.severities.contains(ctx.postgres_audit_guard.severity)) { throw new IllegalArgumentException('invalid export enum'); }\nif (!(ctx.rule.name instanceof String) || ctx.rule.name.length() == 0 || ctx.rule.name.length() > 128) { throw new IllegalArgumentException('invalid rule name'); }\nif (!(ctx.postgres_audit_guard.sqlstate instanceof String)) { throw new IllegalArgumentException('invalid SQLSTATE'); }\ndef state = ctx.postgres_audit_guard.sqlstate;\nif (state.length() != 0 && state.length() != 5) { throw new IllegalArgumentException('invalid SQLSTATE length'); }\nfor (int i = 0; i < state.length(); i++) {\n  if ('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'.indexOf(state.substring(i,i+1)) < 0) { throw new IllegalArgumentException('invalid SQLSTATE characters'); }\n}\n",
+        "params": {
+          "groups": {
+            "ecs": [
+              "version"
+            ],
+            "event": [
+              "kind",
+              "category",
+              "type",
+              "outcome",
+              "module",
+              "dataset",
+              "id",
+              "hash",
+              "action"
+            ],
+            "rule": [
+              "id",
+              "name",
+              "version",
+              "license"
+            ],
+            "postgres_audit_guard": [
+              "schema",
+              "severity",
+              "sqlstate",
+              "scope",
+              "raw_sql_included"
+            ]
+          },
+          "fixed": {
+            "ecs": {
+              "version": "8.17.0"
+            },
+            "event": {
+              "kind": "alert",
+              "category": [
+                "database"
+              ],
+              "type": [
+                "info"
+              ],
+              "module": "postgres_audit_guard",
+              "dataset": "postgres_audit_guard.postgresql"
+            },
+            "rule": {
+              "version": "0.1.0",
+              "license": "MIT"
+            },
+            "postgres_audit_guard": {
+              "schema": "ecs-export/v1",
+              "raw_sql_included": false,
+              "scope": "rule signal; no confirmed compromise or transaction-success inference"
+            }
+          },
+          "rules": [
+            "DB001",
+            "DB002",
+            "DB003",
+            "DB004",
+            "DB005",
+            "DB006",
+            "DB900"
+          ],
+          "outcomes": [
+            "unknown",
+            "failure"
+          ],
+          "severities": [
+            "high",
+            "medium",
+            "warning"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+name: pag-synthetic-harvester
+# Controlled-lab configuration. Supply only prepare-elastic output in PAG_INPUT.
+# The harness owns an isolated loopback-only, synthetic-data Elasticsearch node.
+# Production deployments need separate authenticated/TLS outputs and RBAC.
+filebeat.inputs:
+  - type: filestream
+    id: postgres-audit-guard-v1
+    paths: ["${PAG_INPUT}"]
+    prospector.scanner.check_interval: 1s
+    parsers:
+      - ndjson:
+          target: ""
+          overwrite_keys: true
+          add_error_key: true
+processors:
+  - add_fields:
+      target: '@metadata'
+      fields:
+        op_type: create
+  - copy_fields:
+      fields:
+        - from: event.id
+          to: '@metadata._id'
+      fail_on_error: true
+      ignore_missing: false
+  - include_fields:
+      # Keep parser errors so the strict sink rejects, rather than hiding them.
+      # Filebeat always preserves @timestamp and @metadata intrinsically.
+      fields: ["ecs", "event", "rule", "postgres_audit_guard", "error"]
+setup.ilm.enabled: false
+setup.template.enabled: false
+setup.dashboards.enabled: false
+monitoring.enabled: false
+output.elasticsearch:
+  hosts: ["${PAG_ENDPOINT}"]
+  index: postgres-audit-guard-lab
+  proxy_disable: true
+  bulk_max_size: 32
+  worker: 1
+  backoff.init: 1s
+  backoff.max: 2s
+  timeout: 10s
+queue.mem:
+  events: 256
+  flush.min_events: 1
+  flush.timeout: 1s
+filebeat.registry.flush: 0s
+filebeat.shutdown_timeout: 10s
+http.enabled: true
+http.host: 127.0.0.1
+http.port: ${PAG_MONITOR_PORT}
+logging.level: info
+logging.to_files: false
+logging.metrics.enabled: true
+logging.metrics.period: 5s

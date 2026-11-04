@@ -33,10 +33,11 @@ assertions. An explained legitimate settlement remains in the detector report;
 review status is separate from detection. Preserve prior snapshots and maintain
 trusted current-head anchors and analyst authorization in your existing system.
 
-## Next integration milestone
+## Optional existing-tool handoff
 
-Run an actual controlled Filebeat/Elasticsearch ingest, validate mappings and
-document identifiers, then test replay, malformed exports and duplicate handling.
-Keep that integration optional; local verification should require no account or
-network service. Broader cloud, application and AI-security work should retain the
-same evidence-first validation approach without pretending this tool covers them.
+Follow the [Elastic integration guide](ELASTIC.md) to validate a minimized export
+before handing it to Filebeat. Keep the original sealed source and trusted anchor
+outside the searchable index. Check delivery/rejection results and correlate
+`event.hash` with the authorized source evidence before interpreting a signal.
+The isolated lab tests transport and replay behavior; it does not validate an
+organization's authentication, retention, case permissions or operational policy.

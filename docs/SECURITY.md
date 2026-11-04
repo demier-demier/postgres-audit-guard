@@ -49,3 +49,37 @@ No new cloud service, paid resource, bank system or third-party target is used b
 test harness. It requires a trusted local PostgreSQL installation, uses a newly
 created private cluster, ignores inherited PG connection settings and stops only
 that cluster. The scanner never accepts a database connection string.
+
+## Optional collector boundary
+
+The offline `prepare-elastic` command accepts a strictly typed, bounded ECS
+export. It rejects extra/duplicate fields, unsupported schema/policy metadata,
+inconsistent IDs and conflicting same-ID documents in one batch before a new
+output file becomes visible. These checks enforce shape and consistency, not
+provenance: a caller can fabricate a valid claimed source hash and recompute its
+ID. Independent source capture and trusted anchors are still necessary.
+
+Filebeat is a separately trusted collector. Its extra host, agent and file-path
+metadata is excluded by an explicit allowlist; strict Elasticsearch mappings and
+an ingest pipeline provide additional rejection checks. A rejected document must
+be investigated through collector metrics/logs, not silently counted as delivered.
+Raw collector/server logs can contain rejected input or local paths and must not
+be published. Only the sanitized lab result is suitable for public examples.
+
+The integration harness starts its own new loopback-only cluster with a basic
+license and no authentication/TLS. This is safe only on a trusted host with the
+included synthetic fixture; local users are inside its trust boundary. It must
+not be deployed on a shared or untrusted host, exposed on a network interface,
+or adapted to real data without an authenticated, authorized deployment design.
+
+The shipped collector uses create-only writes: replayed IDs produce HTTP 409
+without replacing existing documents. A conflict response does not distinguish
+same-content replay from a changed payload claiming the same ID. Operators need
+a separate trusted conflict workflow; duplicate counters are not correctness
+attestations. The lab deliberately checks this boundary. Administrators or writers
+with different permissions/configuration may still alter the underlying index.
+
+The index is not append-only evidence, a global conflict registry, or proof that
+every source event was collected. Keep immutable-by-workflow evidence bundles and
+externally trusted digests outside Elasticsearch. No production access-control,
+crash-durability or large-volume delivery guarantee is claimed by the small lab.

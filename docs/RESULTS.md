@@ -134,9 +134,67 @@ cargo build --release --locked
 python3 scripts/benchmark.py --work-dir /tmp/postgres-audit-benchmark-new
 ```
 
+## Actual Filebeat / Elasticsearch integration (2026-11-04)
+
+The optional integration ran on this Apple Silicon Mac with vendor-checksummed
+Elasticsearch and Filebeat **8.19.6**, basic license, a new loopback-only node and
+the existing nine-record synthetic PostgreSQL fixture. See the complete
+[result](../examples/elastic/result-macos.json),
+[archive provenance](../examples/elastic/vendor-artifacts-macos.json) and
+[reproduction instructions](ELASTIC.md). No existing server or customer data was used.
+
+The Rust validator published eight canonical documents. Global Filebeat
+allowlisting removed host/agent/path metadata; comparison checked every indexed
+source field, normalizing only equivalent timestamp UTC representations without
+truncating fractional seconds. Five `failure` and three `unknown` outcomes were
+preserved. These are deterministic rule signals for human review, not eight
+incidents or findings of criminal conduct.
+
+| Actual Filebeat stage | New creates acknowledged | Duplicate conflicts observed | Stored documents | Version of each document |
+| --- | ---: | ---: | ---: | ---: |
+| Initial ingest | 8 | 0 | 8 | 1 |
+| Restart with persistent registry; append eight repeated rows | 0 | 8 | 8 | 1 |
+| Fresh registry replays all sixteen rows | 0 | 16 | 8 | 1 |
+| Fresh registry sends one independently prepared, changed same-ID payload | 0 | 1 | 8 | 1 |
+
+The collector explicitly uses `create` operations. Replay proof comes from real
+Filebeat duplicate counters and unchanged exact source documents, not merely a
+stable total count. The fourth stage demonstrates a limit: a conflicting payload
+is also classified as a duplicate. Original content survives, but HTTP 409 alone
+cannot tell identical replay from changed content; trusted conflict review remains
+outside this implementation. A privileged direct writer can still alter the index.
+
+Six malformed/injected export cases were rejected without publishing a partial
+batch. Six invalid direct sink writes returned HTTP 400 and left stored documents
+unchanged. A separate direct same-ID create returned HTTP 409. All owned processes
+were stopped and the selected HTTP, transport and monitoring ports were confirmed
+closed after cleanup. This is a bounded functional run, not a delivery performance,
+production access-control or general accuracy benchmark.
+
+Observed failures fixed during real integration:
+
+- License information briefly returned 404 during node initialization; startup
+  now waits within a fixed budget after checking its own cluster identity.
+- Explicitly retaining `@timestamp` with Filebeat's include-fields processor
+  duplicated the serialized field. The config now relies on intrinsic retention.
+- Input-level processors ran before Filebeat added host/agent metadata. Strict
+  sink mappings rejected these documents; moving the allowlist to global
+  processors removed those fields before delivery.
+- Filebeat create operations report HTTP 409 through duplicate counters rather
+  than overwrite/version increments. The harness now measures that real behavior
+  and explicitly tests changed-content conflicts.
+
+Final local checks: **66 Rust library tests + 38 CLI tests = 104 passed**, plus
+**four Python harness safety regressions** (redirect refusal, shutdown race,
+all-process cleanup after an error and nanosecond comparison). Formatting,
+all-target strict Clippy, release build and Python compilation passed. Independent
+review checked the controls and observed run. CI reruns Rust on Linux/macOS/Windows,
+a fresh PostgreSQL lab and the actual Elastic integration on Linux; consult the
+corresponding workflow result for remote status.
+
 ## Unvalidated boundaries
 
-No live Elastic/Filebeat deployment, production workload, hostile filesystem
+No production workload, authenticated/TLS Elastic deployment, hostile filesystem
 race, performance SLA, complete PostgreSQL semantic coverage, legal admissibility
 or fraud-detection accuracy is claimed. Windows/Linux runtime coverage is reported
 by the repository's actual CI checks, separately from these Mac observations.
