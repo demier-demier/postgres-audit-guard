@@ -192,9 +192,23 @@ review checked the controls and observed run. CI reruns Rust on Linux/macOS/Wind
 a fresh PostgreSQL lab and the actual Elastic integration on Linux; consult the
 corresponding workflow result for remote status.
 
+## Authenticated Filebeat / Elasticsearch lab (2026-11-13)
+
+The [macOS report](../examples/elastic/result-tls-macos.json) records eight
+creates and 25 Filebeat duplicate conflicts across the three replay stages.
+All stored sources match the unauthenticated control after equivalent UTC
+normalization. Six invalid documents received HTTP 400, seven unauthorized
+operations received HTTP 403, and missing credentials and a revoked key
+received HTTP 401. TLS verification rejected an unknown CA and a hostname
+mismatch. See the [reproduction guide](ELASTIC.md) for the exact scope.
+
+Two initial runs timed out allocating the fixture index on a disk above
+Elasticsearch's default percentage watermarks. The successful run used
+absolute watermarks on the isolated node and checked available space first.
+
 ## Unvalidated boundaries
 
-No production workload, authenticated/TLS Elastic deployment, hostile filesystem
+No production workload, multi-tenant Elastic deployment, hostile filesystem
 race, performance SLA, complete PostgreSQL semantic coverage, legal admissibility
 or fraud-detection accuracy is claimed. Windows/Linux runtime coverage is reported
 by the repository's actual CI checks, separately from these Mac observations.

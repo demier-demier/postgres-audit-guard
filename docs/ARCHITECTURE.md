@@ -99,6 +99,13 @@ observed HTTP 409 duplicate counters across registry restarts and replay. The
 collector uses create-only operations, preserving existing IDs and their payloads. This is an optional integration: offline evidence
 and analyst-case verification have no service dependency.
 
+In authenticated mode the harness generates a short-lived certificate and
+provisions the pipeline and index with a separate bootstrap credential.
+Filebeat receives a key limited to creating documents in that index. TLS
+verifies the node's identity, and Elasticsearch enforces the key's privileges.
+The test harness reads stored documents with the bootstrap identity and records
+sanitized receipts for rejected synthetic writes.
+
 The searchable index is mutable and outside the evidence seal. Deterministic IDs
 do not authenticate the writer, detect all cross-batch conflicts, or establish
 exactly-once processing. See [the integration guide](ELASTIC.md) for the deployment

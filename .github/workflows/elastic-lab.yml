@@ -6,6 +6,7 @@ on:
       - 'src/**'
       - 'integrations/elastic/**'
       - 'scripts/run_elastic_lab.py'
+      - 'scripts/elastic_lab_tls.py'
       - 'tests/test_elastic_lab.py'
       - 'Cargo.*'
       - '.github/workflows/elastic-lab.yml'
@@ -14,6 +15,7 @@ on:
       - 'src/**'
       - 'integrations/elastic/**'
       - 'scripts/run_elastic_lab.py'
+      - 'scripts/elastic_lab_tls.py'
       - 'tests/test_elastic_lab.py'
       - 'Cargo.*'
       - '.github/workflows/elastic-lab.yml'
@@ -58,4 +60,16 @@ jobs:
         with:
           name: elastic-integration-result
           path: ${{ runner.temp }}/elastic-controlled-lab/result.json
+          if-no-files-found: error
+      - name: Prove TLS, collector privilege isolation and rejection receipts
+        run: >-
+          python3 scripts/run_elastic_lab.py --tls
+          --elasticsearch-home "$RUNNER_TEMP/elastic-vendor/elasticsearch-8.19.6"
+          --filebeat-home "$RUNNER_TEMP/elastic-vendor/filebeat-8.19.6-linux-x86_64"
+          --work-dir "$RUNNER_TEMP/elastic-tls-lab"
+          --binary target/release/postgres-audit-guard
+      - uses: actions/upload-artifact@v4
+        with:
+          name: elastic-tls-result
+          path: ${{ runner.temp }}/elastic-tls-lab/result.json
           if-no-files-found: error

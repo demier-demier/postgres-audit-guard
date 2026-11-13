@@ -6,6 +6,7 @@ Requires trusted 8.19.6 archives supplied by the operator; never downloads softw
 """
 
 import argparse
+import base64
 from collections import Counter
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -22,6 +23,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+
 
 
 VERSION = "8.19.6"
@@ -76,15 +78,18 @@ def available_ports(count):
             listener.close()
 
 
-def request(base, method, path, body=None, expected=(200,)):
+def request(base, method, path, body=None, expected=(200,), *, opener=None, authorization=None):
     # URLs are constructed exclusively from ports chosen by this harness.
     data = None if body is None else json_bytes(body)
+    headers = {"Content-Type": "application/json"}
+    if authorization is not None:
+        headers["Authorization"] = authorization
     query = urllib.request.Request(
         base + path, data=data, method=method,
-        headers={"Content-Type": "application/json"},
+        headers=headers,
     )
     try:
-        with HTTP.open(query, timeout=5) as response:
+        with (opener or HTTP).open(query, timeout=20 if method == "PUT" else 5) as response:
             status, payload = response.status, response.read(4 * 1024 * 1024 + 1)
     except urllib.error.HTTPError as error:
         status, payload = error.code, error.read(4 * 1024 * 1024 + 1)
@@ -140,11 +145,14 @@ def cleanup(processes, handles):
 
 
 def main():
+    import elastic_lab_tls
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--elasticsearch-home", type=Path, required=True)
     parser.add_argument("--filebeat-home", type=Path, required=True)
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--binary", type=Path, required=True)
+    parser.add_argument("--tls", action="store_true", help="Use verified TLS and an expiring create-only collector key")
     args = parser.parse_args()
     require(os.name == "posix", "Lab process isolation is supported on macOS/Linux only")
     require(os.geteuid() != 0, "Run this isolated lab as a non-root user")
@@ -154,6 +162,7 @@ def main():
     require((es_home / "bin/elasticsearch").is_file(), "Elasticsearch archive is missing")
     require((fb_home / "filebeat").is_file(), "Filebeat archive is missing")
     work.mkdir(mode=0o700, parents=True, exist_ok=False)
+    require(shutil.disk_usage(work).free > 2 * 1024 ** 3, "Lab requires more than 2 GiB free")
     os.umask(0o077)
     home = work / "home"
     home.mkdir()
@@ -162,8 +171,8 @@ def main():
     processes, handles, bound_ports = [], [], []
     result = None
 
-    def run(command, **kwargs):
-        return subprocess.run(command, env=env, capture_output=True, timeout=30, **kwargs)
+    def run(command, child_env=env, **kwargs):
+        return subprocess.run(command, env=child_env, capture_output=True, timeout=30, **kwargs)
 
     def start(command, name, child_env):
         log = (work / (name + ".log")).open("wb")
@@ -228,31 +237,62 @@ def main():
             "xpack.license.self_generated.type": "basic", "xpack.ml.enabled": False,
             "ingest.geoip.downloader.enabled": False, "xpack.watcher.enabled": False,
             "action.auto_create_index": False,
+            # A tiny fixture on a large shared disk still needs its primary allocated.
+            "cluster.routing.allocation.disk.watermark.low": "2gb",
+            "cluster.routing.allocation.disk.watermark.high": "1gb",
+            "cluster.routing.allocation.disk.watermark.flood_stage": "512mb",
         }
-        (es_conf / "elasticsearch.yml").write_text(json.dumps(settings))
         es_env = dict(env, ES_PATH_CONF=str(es_conf), ES_JAVA_OPTS="-Xms512m -Xmx512m -XX:ActiveProcessorCount=2")
+        opener = admin = ca = None
+        if args.tls:
+            ca, security_settings = elastic_lab_tls.certificates(es_conf, run, require)
+            settings.update(security_settings)
+            opener = elastic_lab_tls.verified_http(ca, NoRedirects)
+        (es_conf / "elasticsearch.yml").write_text(json.dumps(settings))
+        if args.tls:
+            admin = elastic_lab_tls.bootstrap(es_home, es_env, run, require)
         es = start([str(es_home / "bin/elasticsearch")], "elasticsearch", es_env)
-        endpoint = f"http://127.0.0.1:{http_port}"
+        scheme = "https" if args.tls else "http"
+        endpoint = f"{scheme}://127.0.0.1:{http_port}"
+
+        def es_request(method, path, body=None, expected=(200,)):
+            return request(endpoint, method, path, body, expected, opener=opener, authorization=admin)
 
         def identify():
-            _, response = request(endpoint, "GET", "/")
+            status, response = es_request("GET", "/", expected=(200, 503) if args.tls else (200,))
+            if status == 503:
+                return None
             require(response.get("cluster_name") == cluster_name, "Endpoint identity mismatch; no mutation permitted")
             require(response.get("version", {}).get("number") == VERSION, "Elasticsearch version mismatch")
             return response
 
         identity = wait_for(identify, [es], "owned Elasticsearch startup", timeout=180)
         def license_ready():
-            status, response = request(endpoint, "GET", "/_license", expected=(200, 404))
+            status, response = es_request("GET", "/_license", expected=(200, 404))
             return response if status == 200 and "license" in response else None
 
         license_info = wait_for(license_ready, [es], "basic license initialization")
         require(license_info["license"]["type"] == "basic", "Lab must use basic license")
-        request(endpoint, "PUT", "/_ingest/pipeline/postgres-audit-guard-v1", json.loads((CONFIG / "pipeline.json").read_text()))
-        request(endpoint, "PUT", "/" + INDEX, json.loads((CONFIG / "index.json").read_text()))
+        es_request("PUT", "/_ingest/pipeline/postgres-audit-guard-v1", json.loads((CONFIG / "pipeline.json").read_text()))
+        es_request("PUT", "/" + INDEX, json.loads((CONFIG / "index.json").read_text()))
+        collector = None
+        if args.tls:
+            _, key = es_request("POST", "/_security/api_key", {
+                "name": "pag-synthetic-collector", "expiration": "30m",
+                "role_descriptors": {"collector": {
+                    "cluster": ["monitor"], "indices": [{"names": [INDEX], "privileges": ["create_doc"]}],
+                }},
+            })
+            collector = "ApiKey " + key["encoded"]
+            key_info_id = key["id"]
+            collector_value = base64.b64decode(key["encoded"]).decode("ascii")
+
+        def collector_request(method, path, body=None, expected=(200,)):
+            return request(endpoint, method, path, body, expected, opener=opener, authorization=collector)
 
         def snapshot():
-            request(endpoint, "POST", "/" + INDEX + "/_refresh")
-            _, response = request(endpoint, "POST", "/" + INDEX + "/_search", {"size": 100, "version": True, "query": {"match_all": {}}})
+            es_request("POST", "/" + INDEX + "/_refresh")
+            _, response = es_request("POST", "/" + INDEX + "/_search", {"size": 100, "version": True, "query": {"match_all": {}}})
             hits = response["hits"]["hits"]
             require(len(hits) == response["hits"]["total"]["value"], "Unexpected document count")
             return {hit["_id"]: {"source": normalized(hit["_source"]), "version": hit["_version"]} for hit in hits}
@@ -269,6 +309,18 @@ def main():
             fb_env = dict(env, PAG_INPUT=str(source), PAG_ENDPOINT=endpoint, PAG_MONITOR_PORT=str(port))
             command = [str(fb_home / "filebeat"), "-e", "-c", str(CONFIG / "filebeat.yml"),
                        "--path.home", str(fb_home), "--path.config", str(CONFIG), "--path.data", str(registry), "--path.logs", str(work / (name + "-logs"))]
+            if args.tls:
+                fb_env["PAG_CA"] = str(ca)
+                if not (registry / "filebeat.keystore").is_file():
+                    registry.mkdir(exist_ok=True)
+                    keystore = [str(fb_home / "filebeat"), "keystore", "-c", str(CONFIG / "filebeat.yml"),
+                                "--path.home", str(fb_home), "--path.data", str(registry)]
+                    require(run([*keystore, "create"], child_env=fb_env).returncode == 0, "Filebeat keystore creation failed")
+                    require(run([*keystore, "add", "PAG_COLLECTOR_KEY", "--stdin"], child_env=fb_env,
+                                input=collector_value.encode()).returncode == 0, "Filebeat keystore rejected collector key")
+                command += ["-E", "output.elasticsearch.api_key=${PAG_COLLECTOR_KEY}",
+                            "-E", "output.elasticsearch.ssl.certificate_authorities=[${PAG_CA}]",
+                            "-E", "output.elasticsearch.ssl.verification_mode=full"]
             process = start(command, name, fb_env)
             monitor = f"http://127.0.0.1:{port}"
 
@@ -340,18 +392,24 @@ def main():
             doc = deepcopy(docs[0])
             key = doc["event"]["id"]
             change(doc)
-            status, response = request(endpoint, "PUT", "/" + INDEX + "/_doc/" + key, doc, expected=(400,))
+            operation = "_create" if args.tls else "_doc"
+            status, response = collector_request("PUT", f"/{INDEX}/{operation}/{key}", doc, expected=(400,))
             require("error" in response, "Expected explicit sink rejection")
             require(snapshot() == before, "Rejected document changed stored data")
             rejected_sink.append({"case": name, "http_status": status})
+            if args.tls:
+                rejected_sink[-1].update({
+                    "document_id": key, "body_sha256": hashlib.sha256(json_bytes(doc)).hexdigest(),
+                    "error_type": response["error"]["type"],
+                })
 
         # Same-ID altered content is not allowed to replace a previously indexed alert.
         key = conflict["event"]["id"]
-        status, _ = request(endpoint, "PUT", "/" + INDEX + "/_create/" + key, conflict, expected=(409,))
+        status, _ = collector_request("PUT", "/" + INDEX + "/_create/" + key, conflict, expected=(409,))
         require(snapshot() == before, "Create-only duplicate replaced stored content")
 
         sources = {key: value["source"] for key, value in sorted(before.items())}
-        result = {
+        report = {
             "schema": "elastic-lab-result/v1", "elasticsearch_version": identity["version"]["number"],
             "filebeat_version": VERSION, "license": "basic", "fixture": "examples/postgres15-local.jsonl",
             "fixture_sha256": hashlib.sha256((REPO / "examples/postgres15-local.jsonl").read_bytes()).hexdigest(),
@@ -370,6 +428,36 @@ def main():
                 "Index documents are minimized derivatives; sealed evidence and human-review case snapshots remain separate.",
             ],
         }
+        if args.tls:
+            tls_rejections = elastic_lab_tls.prove_tls_rejection(request, endpoint, opener, require)
+            status, _ = request(endpoint, "GET", "/", expected=(401,), opener=opener)
+            forbidden = []
+            document_path = "/" + INDEX + "/_doc/" + key
+            for name, method, path, body in [
+                ("overwrite", "PUT", document_path, conflict),
+                ("update", "POST", "/" + INDEX + "/_update/" + key, {"doc": conflict}),
+                ("delete-document", "DELETE", document_path, None),
+                ("read-document", "GET", document_path, None),
+                ("delete-index", "DELETE", "/" + INDEX, None),
+                ("write-other-index", "PUT", "/pag-unrelated/_create/" + key, conflict),
+                ("manage-ingest-pipeline", "PUT", "/_ingest/pipeline/pag-collector-probe", {"processors": []}),
+            ]:
+                code, response = collector_request(method, path, body, expected=(403,))
+                require(response.get("error", {}).get("type") == "security_exception",
+                        "Expected a privilege denial for " + name)
+                require(snapshot() == before, "Denied operation modified stored alerts")
+                forbidden.append({"case": name, "http_status": code, "error_type": "security_exception",
+                                  "body_sha256": hashlib.sha256(json_bytes(body)).hexdigest() if body is not None else None})
+            es_request("DELETE", "/_security/api_key", {"ids": [key_info_id]})
+            revoked, _ = collector_request("GET", "/", expected=(401,))
+            report["schema"] = "elastic-lab-result/v2"
+            report["security"] = {"http_tls": "verified", "tls_rejections": tls_rejections,
+                                  "unauthenticated_status": status, "collector_revoked_status": revoked,
+                                  "collector_cluster_privileges": ["monitor"],
+                                  "collector_index_privileges": ["create_doc"],
+                                  "collector_index": INDEX, "denied_operations": forbidden}
+            report["limitations"][0] = "Loopback-only synthetic lab with per-run TLS and authorization; no tenant isolation or production deployment."
+        result = report
     finally:
         cleanup(processes, handles)
         if result is not None:

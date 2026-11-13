@@ -79,6 +79,9 @@ fields and conflicting same-ID records, and counts equivalent duplicates. The
 isolated integration harness checks stored documents and versions through actual
 Filebeat ingestion, collector restart and fresh-registry replay. It keeps host
 names, log paths, raw SQL and captured identities out of indexed documents.
+An authenticated lab exercises verified TLS and an expiring collector key
+limited to creating documents in one index. Its report records rejected
+operations and confirms that the stored alerts survive replays unchanged.
 
 ```sh
 cargo run --release --locked -- prepare-elastic \

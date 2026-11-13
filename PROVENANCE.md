@@ -26,6 +26,8 @@ No employer/client source code, operational data or system names are used.
   local configuration paths and server data directories are not redistributed.
   Upstream Elastic artifacts retain their own licenses. The project uses only
   the basic license in its isolated lab; no subscription or trial is activated.
+  The authenticated run reuses that fixture, generates temporary lab credentials
+  and publishes only response classes and synthetic request hashes.
 - Dependencies retain their own licenses through Cargo metadata. The project is MIT.
 
 Technical sources:

@@ -61,6 +61,38 @@ preservation and observed acknowledgements, duplicate conflicts and document ver
 rejection behavior. It stops the processes it starts and writes a sanitized
 `result.json`; raw logs/configuration stay in the private work directory.
 
+## Reproduce the authenticated mode
+
+Add `--tls` to the same command and choose a different, empty destination path
+that does not exist yet. This mode uses OpenSSL, a fresh local CA and a certificate
+for `127.0.0.1`. It verifies TLS against that CA and hostname in both the
+harness and Filebeat. TLS is also enabled on the node transport listener.
+
+The harness provisions the index and final ingest pipeline with an ephemeral
+bootstrap credential. Filebeat receives only a separate API key, valid for up
+to 30 minutes, with cluster `monitor` and `create_doc` on the exact pre-created
+index. The harness writes secrets to the vendor keystores via stdin and revokes
+the key after the probes. These files, the node TLS private key and raw logs
+belong in the private run directory. Never publish that directory.
+
+The [captured macOS result](../examples/elastic/result-tls-macos.json) records
+eight creates, eight conflicts after a registry restart and append, 16 conflicts
+on a fresh registry replay, and one conflict for different content claiming an
+existing ID. All eight documents stayed at version 1 with identical normalized
+content. The six invalid document probes returned HTTP 400, with a receipt
+containing the case name, document ID, canonical body SHA-256 and response error
+type. These receipts cover deliberate lab probes. They do not implement a
+production dead-letter queue or capture every possible Filebeat rejection.
+
+Seven permission probes returned HTTP 403 with the collector key: overwrite,
+update, document delete, document read, index delete, create in a different
+index, and ingest pipeline administration. A request without credentials and
+a request after key revocation returned HTTP 401. The TLS client rejected an
+untrusted CA and a hostname mismatch. The result excludes credentials and
+raw Elasticsearch errors. The lab needs more than 2 GiB free and sets absolute
+disk watermarks for its owned instance so the small synthetic fixture works
+on large disks with a high percentage of space already in use.
+
 ## Boundaries for an existing deployment
 
 The files in [`integrations/elastic`](../integrations/elastic/) are an explicit
@@ -78,7 +110,8 @@ under your existing deployment, access and retention controls:
   and validation as a second boundary.
 - Use your existing TLS, authentication and least-privilege index writer.
   Prefer a `create_doc` writer role and keep administrator setup credentials away
-  from the collector. The unauthenticated lab does not validate these permissions.
+  from the collector. The authenticated lab validates the exact role and index
+  above. It does not establish what privileges a different Filebeat configuration needs.
 - Monitor rejected events and output failures. A healthy process or an unchanged
   document count is not evidence that every row was delivered.
 
@@ -111,5 +144,7 @@ or vendor certification is implied.
 - [Elasticsearch archive installation](https://www.elastic.co/docs/deploy-manage/deploy/self-managed/install-elasticsearch-from-archive-on-linux-macos)
 - [Filebeat metadata fields](https://www.elastic.co/guide/en/beats/filebeat/8.19/add-fields.html)
 - [Filebeat writer privileges](https://www.elastic.co/guide/en/beats/filebeat/8.19/privileges-to-publish-events.html)
+- [Elasticsearch create_doc privilege](https://www.elastic.co/docs/reference/elasticsearch/security-privileges)
+- [Filebeat API key authentication](https://www.elastic.co/docs/reference/beats/filebeat/beats-api-keys)
 - [ECS event fields](https://www.elastic.co/docs/reference/ecs/ecs-event)
 - [ECS rule fields](https://www.elastic.co/docs/reference/ecs/ecs-rule)
