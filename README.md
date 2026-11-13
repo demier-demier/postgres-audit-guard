@@ -82,6 +82,9 @@ names, log paths, raw SQL and captured identities out of indexed documents.
 An authenticated lab exercises verified TLS and an expiring collector key
 limited to creating documents in one index. Its report records rejected
 operations and confirms that the stored alerts survive replays unchanged.
+The optional [receipt journal](docs/ELASTIC.md#classify-repeated-ids-before-filebeat)
+distinguishes identical replays from changed content before collection and
+retains conflicting payloads privately for a reviewer.
 
 ```sh
 cargo run --release --locked -- prepare-elastic \

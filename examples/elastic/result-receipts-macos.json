@@ -1,0 +1,228 @@
+{
+  "schema": "elastic-lab-result/v2",
+  "elasticsearch_version": "8.19.6",
+  "filebeat_version": "8.19.6",
+  "license": "basic",
+  "fixture": "examples/postgres15-local.jsonl",
+  "fixture_sha256": "b816a17d90d7d810a2f73912bce667f2639f009025eea62d2516016add702df1",
+  "prepared_export": {
+    "schema": "elastic-prepare-result/v1",
+    "input_records": 8,
+    "unique_documents": 8,
+    "duplicate_records": 0,
+    "input_sha256": "0b73f5babd3c3ea8ea24b08aacaf63dd0f82b06a77eccd80f78c185e47f7326e",
+    "output_sha256": "0b73f5babd3c3ea8ea24b08aacaf63dd0f82b06a77eccd80f78c185e47f7326e",
+    "sealed": false,
+    "note": "Validated derived export, not authenticated evidence. Retain raw records and trusted anchors separately; signals require human review."
+  },
+  "stages": [
+    {
+      "stage": "initial-ingest",
+      "documents": 8,
+      "version_per_document": 1,
+      "acknowledged_creates": 8,
+      "observed_duplicate_conflicts": 0,
+      "sources_match": true
+    },
+    {
+      "stage": "persistent-registry-append",
+      "documents": 8,
+      "version_per_document": 1,
+      "acknowledged_creates": 0,
+      "observed_duplicate_conflicts": 8,
+      "sources_match": true
+    },
+    {
+      "stage": "fresh-registry-replay",
+      "documents": 8,
+      "version_per_document": 1,
+      "acknowledged_creates": 0,
+      "observed_duplicate_conflicts": 16,
+      "sources_match": true
+    },
+    {
+      "stage": "same-id-changed-payload",
+      "documents": 8,
+      "version_per_document": 1,
+      "acknowledged_creates": 0,
+      "observed_duplicate_conflicts": 1,
+      "sources_match": true
+    }
+  ],
+  "prepare_rejections": [
+    "unexpected-field",
+    "invalid-id",
+    "unsupported-outcome",
+    "raw-sql-flag",
+    "malformed-json",
+    "duplicate-json-key"
+  ],
+  "sink_rejections": [
+    {
+      "case": "unknown-field",
+      "http_status": 400,
+      "document_id": "661c8b8b8ea80ecb7447714067f6bbb100d077b0bc1fb6aa41621c726648f1ea",
+      "body_sha256": "5b060a6ca8584278d866095711dc94ba3531f02e64aed31888763b6b5b3dafba",
+      "error_type": "strict_dynamic_mapping_exception"
+    },
+    {
+      "case": "invalid-timestamp",
+      "http_status": 400,
+      "document_id": "661c8b8b8ea80ecb7447714067f6bbb100d077b0bc1fb6aa41621c726648f1ea",
+      "body_sha256": "e6210a87b6d7848ad8bea5ef90d1f715511f807bae51b537b0222ae688eaa101",
+      "error_type": "document_parsing_exception"
+    },
+    {
+      "case": "missing-required-field",
+      "http_status": 400,
+      "document_id": "661c8b8b8ea80ecb7447714067f6bbb100d077b0bc1fb6aa41621c726648f1ea",
+      "body_sha256": "2c815bfb462a5c35f1b83f3144676247d4b382ff1ef0aa610bed0beeb434d91a",
+      "error_type": "script_exception"
+    },
+    {
+      "case": "unsupported-outcome",
+      "http_status": 400,
+      "document_id": "661c8b8b8ea80ecb7447714067f6bbb100d077b0bc1fb6aa41621c726648f1ea",
+      "body_sha256": "c4efad61dc8aa55cae56af5c3b8f4fdcf93f0950e4cbf09504e64ebfe488f6f0",
+      "error_type": "script_exception"
+    },
+    {
+      "case": "raw-sql-flag",
+      "http_status": 400,
+      "document_id": "661c8b8b8ea80ecb7447714067f6bbb100d077b0bc1fb6aa41621c726648f1ea",
+      "body_sha256": "3ee093a2529ca341cfe5ea4afb0868671f6810e27765adceb49b992b37fb15fe",
+      "error_type": "script_exception"
+    },
+    {
+      "case": "document-id-mismatch",
+      "http_status": 400,
+      "document_id": "661c8b8b8ea80ecb7447714067f6bbb100d077b0bc1fb6aa41621c726648f1ea",
+      "body_sha256": "e1ba4efe8ba54add02ed33266ebf7cf89ba5974a4331442ae9f252115e207baf",
+      "error_type": "script_exception"
+    }
+  ],
+  "altered_same_id_create_rejected": true,
+  "documents": 8,
+  "outcomes": {
+    "failure": 5,
+    "unknown": 3
+  },
+  "indexed_sources_sha256": "950dcd127cb7383669ad18d820c9fc07409d2231b85a2ffdaacb4998956ba439",
+  "scope": "Real local Filebeat/Elasticsearch integration over original synthetic PostgreSQL records; deterministic rules, not AI inference.",
+  "limitations": [
+    "Loopback-only synthetic lab with per-run TLS and authorization; no tenant isolation or production deployment.",
+    "One fixed index; replay across index rotation or policy versions is not deduplicated.",
+    "Create-only Filebeat output preserves existing IDs. A 409 duplicate cannot distinguish identical replay from conflicting same-ID content; no cross-batch conflict registry is provided.",
+    "A privileged direct API writer can still update or delete indexed data; index authorization and external evidence anchors are operator responsibilities.",
+    "The Rust preflight checks hash-derived IDs; the sink checks shape and ID equality, not source-byte authenticity.",
+    "Index documents are minimized derivatives; sealed evidence and human-review case snapshots remain separate."
+  ],
+  "security": {
+    "http_tls": "verified",
+    "tls_rejections": [
+      "untrusted-ca",
+      "hostname-mismatch"
+    ],
+    "unauthenticated_status": 401,
+    "collector_revoked_status": 401,
+    "collector_cluster_privileges": [
+      "monitor"
+    ],
+    "collector_index_privileges": [
+      "create_doc"
+    ],
+    "collector_index": "postgres-audit-guard-lab",
+    "denied_operations": [
+      {
+        "case": "overwrite",
+        "http_status": 403,
+        "error_type": "security_exception",
+        "body_sha256": "7b182bf156be4daada67e64670612db32593d2b7d5a7871cb9e3e9edd1b1c58f"
+      },
+      {
+        "case": "update",
+        "http_status": 403,
+        "error_type": "security_exception",
+        "body_sha256": "ffd6264335309f054be4925c351231885289392f76e1d25b28ae91db34d5b358"
+      },
+      {
+        "case": "delete-document",
+        "http_status": 403,
+        "error_type": "security_exception",
+        "body_sha256": null
+      },
+      {
+        "case": "read-document",
+        "http_status": 403,
+        "error_type": "security_exception",
+        "body_sha256": null
+      },
+      {
+        "case": "delete-index",
+        "http_status": 403,
+        "error_type": "security_exception",
+        "body_sha256": null
+      },
+      {
+        "case": "write-other-index",
+        "http_status": 403,
+        "error_type": "security_exception",
+        "body_sha256": "7b182bf156be4daada67e64670612db32593d2b7d5a7871cb9e3e9edd1b1c58f"
+      },
+      {
+        "case": "manage-ingest-pipeline",
+        "http_status": 403,
+        "error_type": "security_exception",
+        "body_sha256": "80732fe8d264c25bcb13bdb27cec96f0080600d6ac1c92b90d5fefea8332e151"
+      }
+    ]
+  },
+  "receipt_journal": {
+    "accepted": {
+      "batch": "initial",
+      "documents": 8,
+      "kind": "accepted",
+      "output_sha256": "0b73f5babd3c3ea8ea24b08aacaf63dd0f82b06a77eccd80f78c185e47f7326e",
+      "schema": "elastic-materialization/v1"
+    },
+    "replay": {
+      "accepted": 0,
+      "conflict": 0,
+      "replay": 8
+    },
+    "conflict_receipt": {
+      "batch": "conflict",
+      "counts": {
+        "accepted": 0,
+        "conflict": 1,
+        "replay": 0
+      },
+      "events": [
+        {
+          "accepted_sha256": "27d4e687d4ab95c953dd6026e2652e24cfa874e331c02b8fce85721af26f6fc4",
+          "disposition": "conflict",
+          "document_id": "661c8b8b8ea80ecb7447714067f6bbb100d077b0bc1fb6aa41621c726648f1ea",
+          "first_batch": "initial",
+          "observed_sha256": "47041f7f55e0aa1e2a83daa0a631892e633bc5acb497098a5e50a977e9f7caa0"
+        }
+      ],
+      "input_records": 1,
+      "input_sha256": "47041f7f55e0aa1e2a83daa0a631892e633bc5acb497098a5e50a977e9f7caa0",
+      "schema": "elastic-receipt/v1",
+      "within_batch_duplicates": 0
+    },
+    "retained_conflict": {
+      "batch": "conflict",
+      "documents": 1,
+      "kind": "conflicts",
+      "output_sha256": "47041f7f55e0aa1e2a83daa0a631892e633bc5acb497098a5e50a977e9f7caa0",
+      "schema": "elastic-materialization/v1"
+    },
+    "retry_preserved_receipt": true,
+    "batch_label_collision_rejected": true,
+    "malformed_batch_left_no_receipt": true,
+    "existing_output_preserved": true
+  },
+  "owned_processes_stopped": true,
+  "selected_loopback_ports_closed": true
+}

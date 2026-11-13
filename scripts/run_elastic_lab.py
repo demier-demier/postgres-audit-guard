@@ -19,6 +19,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -153,6 +154,7 @@ def main():
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--tls", action="store_true", help="Use verified TLS and an expiring create-only collector key")
+    parser.add_argument("--receipts", action="store_true", help="Exercise durable classification before collection")
     args = parser.parse_args()
     require(os.name == "posix", "Lab process isolation is supported on macOS/Linux only")
     require(os.geteuid() != 0, "Run this isolated lab as a non-root user")
@@ -199,6 +201,61 @@ def main():
         docs = [json.loads(line) for line in spool_bytes.splitlines()]
         expected_docs = {doc["event"]["id"]: normalized(doc) for doc in docs}
         require(len(docs) == 8 and len(expected_docs) == 8, "Synthetic fixture must produce eight distinct alerts")
+        journal_result = None
+        if args.receipts:
+            journal = [sys.executable, str(REPO / "scripts/elastic_receipts.py"),
+                       "--journal", str(work / "receipts.db")]
+
+            def receipt_call(command, *parameters, code=0):
+                result = run([*journal, command, *parameters])
+                require(result.returncode == code, "Receipt operation failed: " + command)
+                return json.loads(result.stdout) if result.stdout else None
+
+            receipt_call("init")
+            source_args = ("--input", str(spool), "--binary", str(binary))
+            first = receipt_call("submit", "--batch", "initial", *source_args)
+            replay = receipt_call("submit", "--batch", "replay", *source_args)
+            changed = deepcopy(docs[0])
+            changed["@timestamp"] = "2026-11-01T00:00:00Z"
+            probe = work / "receipt-conflict.ndjson"
+            probe.write_bytes(json_bytes(changed) + b"\n")
+            conflict_receipt = receipt_call(
+                "submit", "--batch", "conflict", "--input", str(probe), "--binary", str(binary), code=2,
+            )
+            require(first["counts"] == {"accepted": 8, "replay": 0, "conflict": 0}
+                    and replay["counts"] == {"accepted": 0, "replay": 8, "conflict": 0}
+                    and conflict_receipt["counts"] == {"accepted": 0, "replay": 0, "conflict": 1},
+                    "Unexpected receipt classifications")
+            require(receipt_call("receipt", "--batch", "conflict") == conflict_receipt,
+                    "Persisted conflict receipt changed after reopening")
+            require(receipt_call("submit", "--batch", "initial", *source_args) == first,
+                    "Retry after commit changed the original receipt")
+            invalid_args = ("--input", str(probe), "--binary", str(binary))
+            receipt_call("submit", "--batch", "initial", *invalid_args, code=1)
+            require(receipt_call("receipt", "--batch", "initial") == first,
+                    "Batch-label collision changed the accepted receipt")
+            malformed = work / "invalid-receipt-source.ndjson"
+            malformed.write_bytes(spool_bytes + b"{\n")
+            receipt_call("submit", "--batch", "invalid", "--input", str(malformed),
+                         "--binary", str(binary), code=1)
+            receipt_call("receipt", "--batch", "invalid", code=1)
+            spool = work / "journal-ready.ndjson"
+            staged = receipt_call("materialize", "--batch", "initial", "--output", str(spool))
+            require(spool.read_bytes() == spool_bytes, "Journal altered accepted canonical content")
+            receipt_call("materialize", "--batch", "replay", "--output", str(spool), code=1)
+            require(spool.read_bytes() == spool_bytes, "Materialization overwrote existing output")
+            for label in ("replay", "conflict"):
+                result = receipt_call("materialize", "--batch", label,
+                                      "--output", str(work / (label + "-empty.ndjson")))
+                require(result["documents"] == 0, "Non-accepted records reached the spool")
+            rejected = work / "retained-conflict.ndjson"
+            retained = receipt_call("export-conflicts", "--batch", "conflict", "--output", str(rejected))
+            require(retained["documents"] == 1 and json.loads(rejected.read_bytes()) == changed,
+                    "Conflict content was not retained for review")
+            journal_result = {"accepted": staged, "replay": replay["counts"],
+                              "conflict_receipt": conflict_receipt, "retained_conflict": retained,
+                              "retry_preserved_receipt": True, "batch_label_collision_rejected": True,
+                              "malformed_batch_left_no_receipt": True, "existing_output_preserved": True}
         invalids = []
         for name, change in [
             ("unexpected-field", lambda doc: doc.update(message="SYNTHETIC-PRIVATE-PROBE")),
@@ -457,6 +514,8 @@ def main():
                                   "collector_index_privileges": ["create_doc"],
                                   "collector_index": INDEX, "denied_operations": forbidden}
             report["limitations"][0] = "Loopback-only synthetic lab with per-run TLS and authorization; no tenant isolation or production deployment."
+        if journal_result is not None:
+            report["receipt_journal"] = journal_result
         result = report
     finally:
         cleanup(processes, handles)

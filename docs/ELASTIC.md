@@ -93,6 +93,53 @@ raw Elasticsearch errors. The lab needs more than 2 GiB free and sets absolute
 disk watermarks for its owned instance so the small synthetic fixture works
 on large disks with a high percentage of space already in use.
 
+## Classify repeated IDs before Filebeat
+
+The optional receipt journal uses Python's SQLite module and calls the same
+Rust validator before starting a transaction. Start a journal in a private
+local directory. Use a separate journal for each index and policy boundary.
+
+```sh
+python3 scripts/elastic_receipts.py --journal receipts.db init
+python3 scripts/elastic_receipts.py --journal receipts.db submit \
+  --batch initial --binary target/release/postgres-audit-guard --input alerts.ndjson
+python3 scripts/elastic_receipts.py --journal receipts.db receipt --batch initial
+python3 scripts/elastic_receipts.py --journal receipts.db materialize \
+  --batch initial --output ready.ndjson
+```
+
+The first validated canonical payload for an ID is accepted. A later byte-equal
+canonical payload is a replay. A different payload for that ID is retained
+privately with its hash and the first accepted batch for human review. Repeating
+a batch label with identical input bytes returns its prior receipt. Reusing the
+label for different bytes fails. A malformed batch creates no receipt.
+`submit` exits 0 for accepted or replay-only batches, 2 if it records conflicts,
+and 1 on an error. In a mixed batch, new IDs remain accepted even when the
+command exits 2. Review the receipt before publishing accepted rows.
+
+Use `export-conflicts --batch LABEL --output PATH` to recover rejected canonical
+payloads into a new private file outside Filebeat's watch directory.
+`materialize` emits only records first accepted in that batch. After an
+interruption between commit and publication, materialize the original batch
+again. It writes a temporary file and links the final name on the same local
+filesystem, refusing an existing output. Configure Filebeat to match completed
+NDJSON files and exclude the temporary suffix. Monitor Filebeat and Elasticsearch
+separately for delivery acknowledgements.
+
+The journal caps each input at 16 MiB, limits journals to 2,000 batches and
+sets a 128 MiB SQLite page cap. Temporary files and rollback journal space
+are additional. At capacity a write fails without evicting history.
+Rotating the journal starts a new deduplication boundary. Changes in timestamp
+representation can count as conflicts because equality uses canonical bytes.
+Keep raw source exports separately and use pseudonymous batch labels. A local
+writer who can replace the journal can alter history. A trusted operator owns
+the binary, local paths and spool. SQLite cannot commit Filebeat delivery in
+the same transaction.
+
+Add `--tls --receipts` to the lab command to materialize accepted records before
+Filebeat starts and check persistence across separate CLI processes. Existing
+direct sink replay and privilege probes run as controls.
+
 ## Boundaries for an existing deployment
 
 The files in [`integrations/elastic`](../integrations/elastic/) are an explicit
@@ -123,9 +170,9 @@ separately from fresh successful creates when interpreting acknowledgements.
 
 A 409 proves only that the ID already exists: it does **not** distinguish an exact
 replay from a different payload claiming the same source hash/rule. The preflight
-rejects conflicting duplicates within one batch, but there is no global conflict
-registry. Preserve and investigate conflicting publications in a trusted external
-workflow. Source hashes and IDs do not authenticate the producer. Index rollover,
+rejects conflicting duplicates within one batch. The receipt journal can classify
+conflicts across its own batches. It has no visibility into other writers or
+journals. Source hashes and IDs do not authenticate the producer. Index rollover,
 changed rules/versions, multiple sources and concurrent writers need an explicit
 policy. Administrators or differently configured writers can still replace/delete
 index documents; the index is a searchable derivative, not immutable evidence or

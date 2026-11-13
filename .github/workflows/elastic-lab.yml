@@ -7,6 +7,7 @@ on:
       - 'integrations/elastic/**'
       - 'scripts/run_elastic_lab.py'
       - 'scripts/elastic_lab_tls.py'
+      - 'scripts/elastic_receipts.py'
       - 'tests/test_elastic_lab.py'
       - 'Cargo.*'
       - '.github/workflows/elastic-lab.yml'
@@ -16,6 +17,7 @@ on:
       - 'integrations/elastic/**'
       - 'scripts/run_elastic_lab.py'
       - 'scripts/elastic_lab_tls.py'
+      - 'scripts/elastic_receipts.py'
       - 'tests/test_elastic_lab.py'
       - 'Cargo.*'
       - '.github/workflows/elastic-lab.yml'
@@ -63,7 +65,7 @@ jobs:
           if-no-files-found: error
       - name: Prove TLS, collector privilege isolation and rejection receipts
         run: >-
-          python3 scripts/run_elastic_lab.py --tls
+          python3 scripts/run_elastic_lab.py --tls --receipts
           --elasticsearch-home "$RUNNER_TEMP/elastic-vendor/elasticsearch-8.19.6"
           --filebeat-home "$RUNNER_TEMP/elastic-vendor/filebeat-8.19.6-linux-x86_64"
           --work-dir "$RUNNER_TEMP/elastic-tls-lab"

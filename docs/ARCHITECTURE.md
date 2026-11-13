@@ -106,6 +106,12 @@ verifies the node's identity, and Elasticsearch enforces the key's privileges.
 The test harness reads stored documents with the bootstrap identity and records
 sanitized receipts for rejected synthetic writes.
 
+The optional receipt journal inserts the first canonical payload and its
+batch decisions in one SQLite transaction after Rust validation. It stores
+conflicting canonical payloads privately and can reconstruct the accepted
+NDJSON spool by batch ID after a restart. The downstream collector and index
+acknowledge delivery separately.
+
 The searchable index is mutable and outside the evidence seal. Deterministic IDs
 do not authenticate the writer, detect all cross-batch conflicts, or establish
 exactly-once processing. See [the integration guide](ELASTIC.md) for the deployment

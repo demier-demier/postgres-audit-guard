@@ -28,6 +28,9 @@ No employer/client source code, operational data or system names are used.
   the basic license in its isolated lab; no subscription or trial is activated.
   The authenticated run reuses that fixture, generates temporary lab credentials
   and publishes only response classes and synthetic request hashes.
+  The receipt journal exercise changes a single synthetic timestamp while
+  preserving the document ID. This scripted probe tests content reconciliation,
+  not a real financial record or evidence of misconduct.
 - Dependencies retain their own licenses through Cargo metadata. The project is MIT.
 
 Technical sources:

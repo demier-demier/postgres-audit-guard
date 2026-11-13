@@ -206,6 +206,17 @@ Two initial runs timed out allocating the fixture index on a disk above
 Elasticsearch's default percentage watermarks. The successful run used
 absolute watermarks on the isolated node and checked available space first.
 
+## Persistent receipts before collection (2026-11-13)
+
+The [captured macOS run](../examples/elastic/result-receipts-macos.json) used
+separate CLI processes and a new SQLite journal. It accepted eight original
+alerts, classified eight identical replays and preserved one changed-payload
+conflict for review. Only the initial eight were materialized for the journal's
+Filebeat handoff. The TLS collector stored all eight at version 1. A repeated
+batch label returned its original receipt, changed bytes under that label
+failed, an invalid batch left no receipt, and an existing spool was preserved.
+This result demonstrates bounded local reconciliation with synthetic records.
+
 ## Unvalidated boundaries
 
 No production workload, multi-tenant Elastic deployment, hostile filesystem
