@@ -18,7 +18,8 @@ jobs:
       - run: cargo test --locked
       - run: cargo clippy --locked --all-targets -- -D warnings
   postgres-lab:
-    runs-on: ubuntu-latest
+    # Ubuntu 24.04 provides the PostgreSQL 16 package used by this lab.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
