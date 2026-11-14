@@ -46,6 +46,9 @@ Technical sources:
    and [writer privileges](https://www.elastic.co/guide/en/beats/filebeat/8.19/privileges-to-publish-events.html)
    inform the optional collector boundary. Configuration and harness code are
    original; the measured integration is not vendor approval or certification.
+5. [Elasticsearch 8.19 multi get](https://www.elastic.co/guide/en/elasticsearch/reference/8.19/docs-multi-get.html)
+   defines real-time reads, required read access and per-document errors.
+   The interruption and rewrite probes use only the existing synthetic fixture.
 
 Banking/security career relevance is not an employment, regulatory approval or
 operational deployment claim. Rules are deterministic; no model inference is used.

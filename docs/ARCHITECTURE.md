@@ -112,6 +112,14 @@ conflicting canonical payloads privately and can reconstruct the accepted
 NDJSON spool by batch ID after a restart. The downstream collector and index
 acknowledge delivery separately.
 
+Delivery reconciliation starts with the accepted batch's IDs and a read-only
+`_mget` capture from the concrete target index. A transaction binds the capture
+hash and label to per-ID results. Matching source and version 1 confirm the
+observed index state. Explicit absence allows recovery, while a content or
+version mismatch goes to review. Unknown IDs, partial results and per-document
+errors abort the observation. Recovery stages a new create-only spool of missing
+rows using their retained, hash-checked canonical bytes.
+
 The searchable index is mutable and outside the evidence seal. Deterministic IDs
 do not authenticate the writer, detect all cross-batch conflicts, or establish
 exactly-once processing. See [the integration guide](ELASTIC.md) for the deployment

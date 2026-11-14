@@ -9,12 +9,10 @@ import argparse
 import base64
 from collections import Counter
 from copy import deepcopy
-from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import signal
 import socket
@@ -25,6 +23,7 @@ import urllib.error
 import urllib.request
 import uuid
 
+from elastic_receipts import normalized
 
 
 VERSION = "8.19.6"
@@ -47,23 +46,6 @@ def require(condition, message):
 
 def json_bytes(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
-
-
-def normalized(document):
-    """Filebeat serializes its timestamp in UTC; preserve every other field exactly."""
-    result = deepcopy(document)
-    match = re.fullmatch(
-        r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})",
-        result["@timestamp"],
-    )
-    require(match is not None, "Timestamp is outside the comparison contract")
-    base, fraction, offset = match.groups()
-    instant = datetime.fromisoformat(base + offset.replace("Z", "+00:00"))
-    result["@timestamp"] = (
-        instant.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-        + "." + (fraction or "").ljust(9, "0") + "Z"
-    )
-    return result
 
 
 def available_ports(count):
@@ -155,7 +137,10 @@ def main():
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--tls", action="store_true", help="Use verified TLS and an expiring create-only collector key")
     parser.add_argument("--receipts", action="store_true", help="Exercise durable classification before collection")
+    parser.add_argument("--delivery", action="store_true",
+                        help="Exercise a bounded Filebeat interruption and recovery with --tls --receipts")
     args = parser.parse_args()
+    require(not args.delivery or (args.tls and args.receipts), "Delivery recovery requires --tls --receipts")
     require(os.name == "posix", "Lab process isolation is supported on macOS/Linux only")
     require(os.geteuid() != 0, "Run this isolated lab as a non-root user")
     es_home, fb_home = args.elasticsearch_home.resolve(), args.filebeat_home.resolve()
@@ -245,9 +230,9 @@ def main():
             receipt_call("materialize", "--batch", "replay", "--output", str(spool), code=1)
             require(spool.read_bytes() == spool_bytes, "Materialization overwrote existing output")
             for label in ("replay", "conflict"):
-                result = receipt_call("materialize", "--batch", label,
-                                      "--output", str(work / (label + "-empty.ndjson")))
-                require(result["documents"] == 0, "Non-accepted records reached the spool")
+                empty_spool = receipt_call("materialize", "--batch", label,
+                                           "--output", str(work / (label + "-empty.ndjson")))
+                require(empty_spool["documents"] == 0, "Non-accepted records reached the spool")
             rejected = work / "retained-conflict.ndjson"
             retained = receipt_call("export-conflicts", "--batch", "conflict", "--output", str(rejected))
             require(retained["documents"] == 1 and json.loads(rejected.read_bytes()) == changed,
@@ -354,6 +339,9 @@ def main():
             require(len(hits) == response["hits"]["total"]["value"], "Unexpected document count")
             return {hit["_id"]: {"source": normalized(hit["_source"]), "version": hit["_version"]} for hit in hits}
 
+        def version_one(documents):
+            return {key: {"source": doc, "version": 1} for key, doc in documents.items()}
+
         def assert_snapshot(value, version):
             return len(value) == len(expected_docs) and all(
                 key in value and value[key]["source"] == doc and value[key]["version"] == version
@@ -389,7 +377,30 @@ def main():
 
         stages = []
 
-        def stage(name, registry, expected_acks, expected_duplicates, append=False, source=None):
+        def complete_stage(process, stats, expected_acks, expected_duplicates, expected, name):
+            target = version_one(expected)
+
+            def complete():
+                state = stats()
+                events = state.get("libbeat", {}).get("output", {}).get("events", {})
+                require(events.get("dropped", 0) == 0, "Filebeat dropped events; inspect private logs")
+                if events.get("acked", 0) < expected_acks or events.get("duplicates", 0) < expected_duplicates:
+                    return None
+                value = snapshot()
+                return (events, value) if value == target else None
+
+            output_events, value = wait_for(complete, [es, process], name, timeout=90)
+            require(output_events.get("failed", 0) == 0 and output_events.get("dropped", 0) == 0,
+                    "Filebeat reported dropped or failed events")
+            require(output_events.get("acked", 0) == expected_acks, "Unexpected acknowledgements; possible duplicate replay")
+            require(output_events.get("duplicates", 0) == expected_duplicates, "Unexpected duplicate conflict count")
+            return {"stage": name, "documents": len(value), "version_per_document": 1,
+                    "acknowledged_creates": expected_acks, "observed_duplicate_conflicts": expected_duplicates,
+                    "sources_match": True}
+
+        def stage(name, registry, expected_acks, expected_duplicates, append=False, source=None, expected=None):
+            if expected is None:
+                expected = expected_docs
             process, stats = start_filebeat(name, registry, source or spool)
             if append:
                 with spool.open("ab") as stream:
@@ -397,30 +408,124 @@ def main():
                     stream.flush()
                     os.fsync(stream.fileno())
 
-            def complete():
-                state = stats()
-                events = state.get("libbeat", {}).get("output", {}).get("events", {})
-                require(events.get("dropped", 0) == 0, "Filebeat dropped events; inspect private logs")
-                acked = events.get("acked", 0)
-                duplicates = events.get("duplicates", 0)
-                if acked < expected_acks or duplicates < expected_duplicates:
-                    return None
-                value = snapshot()
-                return (state, value) if assert_snapshot(value, 1) else None
-
-            metrics, value = wait_for(complete, [es, process], name, timeout=90)
+            staged = complete_stage(process, stats, expected_acks, expected_duplicates, expected, name)
             stop(process)
-            output_events = metrics["libbeat"]["output"]["events"]
-            require(output_events.get("failed", 0) == 0 and output_events.get("dropped", 0) == 0,
-                    "Filebeat reported dropped or failed events")
-            require(output_events.get("acked", 0) == expected_acks, "Unexpected acknowledgements; possible duplicate replay")
-            require(output_events.get("duplicates", 0) == expected_duplicates, "Unexpected duplicate conflict count")
-            require(assert_snapshot(snapshot(), 1), "Final index state differs after Filebeat shutdown")
-            stages.append({"stage": name, "documents": len(value), "version_per_document": 1,
-                           "acknowledged_creates": output_events.get("acked", 0),
-                           "observed_duplicate_conflicts": output_events.get("duplicates", 0), "sources_match": True})
+            require(snapshot() == version_one(expected),
+                    "Final index state differs after Filebeat shutdown")
+            stages.append(staged)
 
         registry = work / "filebeat-state"
+        delivery_result = None
+        if args.delivery:
+            _, reader_key = es_request("POST", "/_security/api_key", {
+                "name": "pag-synthetic-reader", "expiration": "30m",
+                "role_descriptors": {"reader": {
+                    "indices": [{"names": [INDEX], "privileges": ["read"]}],
+                }},
+            })
+            reader = "ApiKey " + reader_key["encoded"]
+            batch_args = ("--batch", "initial")
+            query = receipt_call("delivery-query", *batch_args)
+            require(query == {"ids": sorted(expected_docs)}, "Delivery query differs from accepted fixture")
+            mget = "/" + INDEX + "/_mget"
+
+            def observe(label):
+                _, payload = request(endpoint, "POST", mget, query, opener=opener, authorization=reader)
+                captured = work / (label + "-mget.json")
+                captured.write_bytes(json_bytes(payload))
+                parameters = (*batch_args, "--observation", label, "--index", INDEX, "--snapshot", str(captured))
+                result = receipt_call("observe-delivery", *parameters)
+                require(receipt_call("observe-delivery", *parameters) == result
+                        and receipt_call("delivery-receipt", "--observation", label) == result,
+                        "Observation did not survive retry and database reopening")
+                return result
+
+            # Publish only the first half, then abruptly stop the owned collector.
+            wave = work / "partial-wave.ndjson"
+            wave.write_bytes(b"".join(spool_bytes.splitlines(keepends=True)[:4]))
+            partial = {doc["event"]["id"]: normalized(doc) for doc in docs[:4]}
+            process, stats = start_filebeat("interrupted-collector", registry, wave)
+            interruption = complete_stage(process, stats, 4, 0, partial, "interrupted-collector")
+            os.killpg(process.pid, signal.SIGKILL)
+            require(process.wait(timeout=15) == -signal.SIGKILL, "Filebeat did not exit from interruption")
+            require(snapshot() == version_one(partial), "Index changed after collector interruption")
+            before_recovery = observe("after-interruption")
+            require(before_recovery["counts"] == {"confirmed": 4, "missing": 4, "mismatch": 0},
+                    "Partial delivery observation did not identify the backlog")
+            missing = set(expected_docs) - set(partial)
+            require({row["document_id"] for row in before_recovery["events"] if row["disposition"] == "missing"}
+                    == missing, "Wrong IDs selected for recovery")
+            recovery = work / "recovery-wave.ndjson"
+            recovery_receipt = receipt_call("recover-missing", "--observation", "after-interruption",
+                                            "--output", str(recovery))
+            require(recovery_receipt["documents"] == 4 and
+                    {json.loads(line)["event"]["id"] for line in recovery.read_bytes().splitlines()} == missing,
+                    "Recovery spool does not contain exactly the missing IDs")
+            recovery_registry = work / "recovery-state"
+            stage("recovery-collector", recovery_registry, 4, 0, source=recovery)
+            after_recovery = observe("after-recovery")
+            require(after_recovery["counts"] == {"confirmed": 8, "missing": 0, "mismatch": 0},
+                    "Recovered payloads did not match the full accepted batch")
+            receipt_call("recover-missing", "--observation", "after-interruption",
+                         "--output", str(work / "stale-wave.ndjson"), code=1)
+            no_work = receipt_call("recover-missing", "--observation", "after-recovery",
+                                   "--output", str(work / "empty-recovery.ndjson"))
+            require(no_work["documents"] == 0, "Confirmed rows were selected for a retry")
+
+            # A privileged rewrite of an equal payload must still be visible as a mismatch.
+            rewritten_id = docs[0]["event"]["id"]
+            _, rewrite = es_request("PUT", "/" + INDEX + "/_doc/" + rewritten_id, docs[0])
+            require(rewrite["_version"] == 2, "Expected a second document version in the owned lab index")
+            after_rewrite = observe("after-privileged-rewrite")
+            require(after_rewrite["counts"] == {"confirmed": 7, "missing": 0, "mismatch": 1},
+                    "A privileged rewrite was not isolated for review")
+            withheld = receipt_call("recover-missing", "--observation", "after-privileged-rewrite",
+                                    "--output", str(work / "no-rewrite.ndjson"))
+            require(withheld["documents"] == 0, "A mismatched document entered a recovery spool")
+
+            es_request("PUT", "/pag-unrelated", {"settings": {"number_of_replicas": 0}})
+            es_request("PUT", "/pag-unrelated/_doc/" + rewritten_id, docs[0], expected=(201,))
+            denied = []
+            denied_capture = None
+            for name, method, path, body in [
+                ("collector-mget", "POST", mget, query),
+                ("reader-create", "PUT", "/" + INDEX + "/_create/" + docs[0]["event"]["id"], docs[0]),
+                ("reader-other-index", "POST", "/pag-unrelated/_mget", query),
+            ]:
+                status, payload = request(endpoint, method, path, body, expected=(200, 403), opener=opener,
+                                          authorization=collector if name == "collector-mget" else reader)
+                if status == 403:
+                    errors = [payload.get("error", {})]
+                else:
+                    hits = payload.get("docs", [])
+                    require(method == "POST" and [hit.get("_id") for hit in hits] == query["ids"]
+                            and all("_source" not in hit and "found" not in hit for hit in hits),
+                            "Expected per-document denial: " + name)
+                    errors = [hit.get("error", {}) for hit in hits]
+                require(all(error.get("type") == "security_exception" for error in errors), "Expected denial: " + name)
+                denied.append({"case": name, "http_status": status, "denied_entries": len(errors)})
+                if name == "collector-mget":
+                    denied_capture = work / "denied-mget.json"
+                    denied_capture.write_bytes(json_bytes(payload))
+            receipt_call("observe-delivery", *batch_args, "--observation", "denied-probe",
+                         "--index", INDEX, "--snapshot", str(denied_capture), code=1)
+            receipt_call("delivery-receipt", "--observation", "denied-probe", code=1)
+            es_request("DELETE", "/_security/api_key", {"ids": [reader_key["id"]]})
+            revoked, _ = request(endpoint, "POST", mget, query, expected=(401,), opener=opener, authorization=reader)
+            delivery_result = {
+                "interruption": interruption, "collector_exit": "SIGKILL",
+                "after_interruption": before_recovery, "recovery_spool": recovery_receipt,
+                "recovery": stages.pop(), "after_recovery": after_recovery,
+                "after_privileged_rewrite": after_rewrite, "mismatch_spool_documents": withheld["documents"],
+                "followup_spool_documents": no_work["documents"], "stale_observation_rejected": True,
+                "authorization_error_left_no_observation": True,
+                "reader_index_privileges": ["read"], "denied_operations": denied,
+                "revoked_reader_status": revoked,
+            }
+            # Restore a new fixture index for the independent, pre-existing control sequence.
+            es_request("DELETE", "/" + INDEX)
+            es_request("PUT", "/" + INDEX, json.loads((CONFIG / "index.json").read_text()))
+            registry = work / "filebeat-control-state"
         stage("initial-ingest", registry, 8, 0)
         require((registry / "registry").is_dir(), "Filebeat registry was not persisted")
         stage("persistent-registry-append", registry, 0, 8, append=True)
@@ -516,6 +621,14 @@ def main():
             report["limitations"][0] = "Loopback-only synthetic lab with per-run TLS and authorization; no tenant isolation or production deployment."
         if journal_result is not None:
             report["receipt_journal"] = journal_result
+            report["limitations"][2] = (
+                "The journal identifies conflicts within its own history. Filebeat's 409 response alone remains ambiguous."
+            )
+        if delivery_result is not None:
+            report["delivery_reconciliation"] = delivery_result
+            report["limitations"].append(
+                "A matching read is evidence of index state at capture time. It cannot attribute a write or prove exactly-once delivery."
+            )
         result = report
     finally:
         cleanup(processes, handles)

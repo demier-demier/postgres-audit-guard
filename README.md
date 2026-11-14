@@ -84,7 +84,10 @@ limited to creating documents in one index. Its report records rejected
 operations and confirms that the stored alerts survive replays unchanged.
 The optional [receipt journal](docs/ELASTIC.md#classify-repeated-ids-before-filebeat)
 distinguishes identical replays from changed content before collection and
-retains conflicting payloads privately for a reviewer.
+retains conflicting payloads privately for a reviewer. Its
+[delivery reconciliation](docs/ELASTIC.md#reconcile-delivery-and-recover-missing-alerts)
+compares accepted alerts with Elasticsearch and rebuilds a spool for explicitly
+missing IDs after an interrupted handoff.
 
 ```sh
 cargo run --release --locked -- prepare-elastic \

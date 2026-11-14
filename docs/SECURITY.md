@@ -67,10 +67,10 @@ Raw collector/server logs can contain rejected input or local paths and must not
 be published. Only the sanitized lab result is suitable for public examples.
 
 The integration harness starts its own new loopback-only cluster with a basic
-license and no authentication/TLS. This is safe only on a trusted host with the
-included synthetic fixture; local users are inside its trust boundary. It must
-not be deployed on a shared or untrusted host, exposed on a network interface,
-or adapted to real data without an authenticated, authorized deployment design.
+license. The unauthenticated control is intended for a trusted host with the
+included synthetic fixture. Authenticated mode uses separately issued collector
+and read-only observation credentials over verified TLS. Both modes rely on
+private local storage and a trusted operator.
 
 The shipped collector uses create-only writes: replayed IDs produce HTTP 409
 without replacing existing documents. A conflict response does not distinguish
@@ -78,6 +78,15 @@ same-content replay from a changed payload claiming the same ID. Operators need
 a separate trusted conflict workflow; duplicate counters are not correctness
 attestations. The lab deliberately checks this boundary. Administrators or writers
 with different permissions/configuration may still alter the underlying index.
+
+Delivery observation consumes an operator-controlled capture. Reject partial
+coverage, per-document authorization/shard errors, cross-index entries and
+ambiguous JSON before allowing recovery. An altered source or later version
+blocks replay for that ID and stays visible for review. A locally privileged
+actor can forge a capture, alter the journal or bypass the recovery workflow.
+Snapshot hashes bind bytes under the operator's custody. Keep the journal, raw
+captures, collector credentials and spool private. A read-only Elasticsearch
+credential still exposes source documents in its authorized index.
 
 The index is not append-only evidence, a global conflict registry, or proof that
 every source event was collected. Keep immutable-by-workflow evidence bundles and

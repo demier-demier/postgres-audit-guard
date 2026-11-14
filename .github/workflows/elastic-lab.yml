@@ -63,9 +63,9 @@ jobs:
           name: elastic-integration-result
           path: ${{ runner.temp }}/elastic-controlled-lab/result.json
           if-no-files-found: error
-      - name: Prove TLS, collector privilege isolation and rejection receipts
+      - name: Prove TLS, privilege isolation and interrupted delivery recovery
         run: >-
-          python3 scripts/run_elastic_lab.py --tls --receipts
+          python3 scripts/run_elastic_lab.py --tls --receipts --delivery
           --elasticsearch-home "$RUNNER_TEMP/elastic-vendor/elasticsearch-8.19.6"
           --filebeat-home "$RUNNER_TEMP/elastic-vendor/filebeat-8.19.6-linux-x86_64"
           --work-dir "$RUNNER_TEMP/elastic-tls-lab"

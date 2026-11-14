@@ -217,6 +217,34 @@ batch label returned its original receipt, changed bytes under that label
 failed, an invalid batch left no receipt, and an existing spool was preserved.
 This result demonstrates bounded local reconciliation with synthetic records.
 
+## Delivery reconciliation and recovery (2026-11-14)
+
+The [macOS report](../examples/elastic/result-delivery-macos.json) uses the
+same eight synthetic ECS alerts, Filebeat 8.19.6 and Elasticsearch 8.19.6.
+The lab held four accepted alerts back and killed the collector after the
+first four were indexed. A separate read-only credential observed four
+matches and four explicit absences. The recovery spool contained those four
+missing IDs. A new collector created all four with zero duplicate conflicts.
+A fresh observation confirmed eight version-1 records. An older observation
+could still be read but could no longer generate a retry spool.
+
+A privileged synthetic rewrite of identical content produced one version
+mismatch and no recovery rows. The read key could neither create documents
+nor read another index. In the cross-index probe, Elasticsearch returned HTTP
+200 with eight per-document errors. The collector could not read indexed
+documents, and a denied capture left no journal observation. Revoking the
+observation key returned HTTP 401. The Python tests also cover v1 migration,
+atomic rollback after an incomplete response and content comparison across
+distinct JSON types.
+
+Initial lab attempts failed while the harness assumed a single HTTP response
+code for denial and used a nonexistent index to probe read scope. The passing
+run checks per-document errors and uses an existing synthetic second index.
+This test controls the backlog and does not reproduce a lost network
+acknowledgement. An observation describes what the index returned at capture
+time, with no guarantee of write attribution or exactly-once delivery.
+Reproduce with the [delivery lab command](ELASTIC.md#reconcile-delivery-and-recover-missing-alerts).
+
 ## Unvalidated boundaries
 
 No production workload, multi-tenant Elastic deployment, hostile filesystem

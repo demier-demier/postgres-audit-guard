@@ -140,6 +140,58 @@ Add `--tls --receipts` to the lab command to materialize accepted records before
 Filebeat starts and check persistence across separate CLI processes. Existing
 direct sink replay and privilege probes run as controls.
 
+## Reconcile delivery and recover missing alerts
+
+The journal's acceptance and Elasticsearch's observed state are separate. Use a
+read-only credential and verified TLS to capture the complete response for the
+accepted IDs, using the concrete index and full source:
+
+```sh
+umask 077
+index=postgres-audit-guard-lab
+python3 scripts/elastic_receipts.py --journal receipts.db delivery-query \
+  --batch initial > query.json
+# Use a private curl config containing the read-only Authorization header.
+curl -q --fail --silent --show-error --cacert "$ELASTIC_CA" \
+  --config "$ELASTIC_READ_CONFIG" -H 'Content-Type: application/json' \
+  --data-binary @query.json "$ELASTIC_URL/$index/_mget" > captured.json
+python3 scripts/elastic_receipts.py --journal receipts.db observe-delivery \
+  --batch initial --index "$index" --observation after-interruption \
+  --snapshot captured.json
+python3 scripts/elastic_receipts.py --journal receipts.db delivery-receipt \
+  --observation after-interruption
+python3 scripts/elastic_receipts.py --journal receipts.db recover-missing \
+  --observation after-interruption --output retry.ndjson
+```
+
+An observation records the capture SHA-256 and one disposition per accepted
+ID. `confirmed` requires equal source content and version 1. The comparison
+normalizes timestamp offsets to UTC and preserves nanoseconds. `missing`
+requires an explicit `found: false`. `mismatch` includes changed content or a
+different version and requires review. A partial result, index mismatch,
+duplicate ID or per-document error rejects the whole capture, even with HTTP
+200. Reusing an observation label with identical bytes returns the same record.
+Record a fresh observation label after retries.
+
+The recovery command uses the latest recorded observation for that batch and
+index, copies only missing rows and refuses to replace an output file. Keep a
+single operator per journal/index boundary and coordinate collection and retry
+publication to avoid racing another writer. Use the create-only collector. A
+duplicate may arrive between a read and a retry, and a successful read can
+match pre-existing content. The CLI trusts the operator's capture and does
+not authenticate its origin, attach a trusted clock or save the raw capture.
+Retain the private response separately if independent review requires it.
+For older v1 databases, the first valid observation migrates the schema in the
+same transaction. Captures are capped at 32 MiB and observations at 2,000 per
+journal, subject to the existing SQLite page cap.
+
+Add `--tls --receipts --delivery` to the isolated lab command. This kills the
+owned Filebeat process after the first four accepted alerts have been observed
+in Elasticsearch, generates the remaining spool, restarts collection and
+checks all eight. The remaining four were held back before publication to
+create a reproducible backlog. This scenario does not exercise a lost network
+acknowledgement or partially completed bulk request.
+
 ## Boundaries for an existing deployment
 
 The files in [`integrations/elastic`](../integrations/elastic/) are an explicit
