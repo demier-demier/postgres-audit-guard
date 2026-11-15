@@ -6,6 +6,7 @@ on:
       - 'src/**'
       - 'integrations/elastic/**'
       - 'scripts/run_elastic_lab.py'
+      - 'scripts/elastic_ack_fault.py'
       - 'scripts/elastic_lab_tls.py'
       - 'scripts/elastic_receipts.py'
       - 'tests/test_elastic_lab.py'
@@ -16,6 +17,7 @@ on:
       - 'src/**'
       - 'integrations/elastic/**'
       - 'scripts/run_elastic_lab.py'
+      - 'scripts/elastic_ack_fault.py'
       - 'scripts/elastic_lab_tls.py'
       - 'scripts/elastic_receipts.py'
       - 'tests/test_elastic_lab.py'
@@ -63,9 +65,9 @@ jobs:
           name: elastic-integration-result
           path: ${{ runner.temp }}/elastic-controlled-lab/result.json
           if-no-files-found: error
-      - name: Prove TLS, privilege isolation and interrupted delivery recovery
+      - name: Prove TLS, interrupted delivery recovery and lost acknowledgement replay
         run: >-
-          python3 scripts/run_elastic_lab.py --tls --receipts --delivery
+          python3 scripts/run_elastic_lab.py --tls --receipts --delivery --ack-loss
           --elasticsearch-home "$RUNNER_TEMP/elastic-vendor/elasticsearch-8.19.6"
           --filebeat-home "$RUNNER_TEMP/elastic-vendor/filebeat-8.19.6-linux-x86_64"
           --work-dir "$RUNNER_TEMP/elastic-tls-lab"

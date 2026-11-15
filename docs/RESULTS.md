@@ -245,6 +245,35 @@ acknowledgement. An observation describes what the index returned at capture
 time, with no guarantee of write attribution or exactly-once delivery.
 Reproduce with the [delivery lab command](ELASTIC.md#reconcile-delivery-and-recover-missing-alerts).
 
+## Lost bulk acknowledgement (2026-11-15)
+
+The [macOS result](../examples/elastic/result-ack-loss-macos.json) used real
+Filebeat and Elasticsearch 8.19.6. A loopback TLS relay passed one synthetic
+bulk create upstream. Elasticsearch returned HTTP 200 with item status 201 at
+version 1. The relay closed the downstream connection without returning an
+HTTP response. The collector reported an output failure.
+
+| Checkpoint | Filebeat on-disk offset | Indexed alerts |
+|---|---:|---:|
+| Seven acknowledged alerts | 4,831 bytes | 7 |
+| Lost reply after the eighth create | 4,831 bytes | 8 |
+| Restart with the same file and registry | 5,534 bytes | 8 |
+| Next restart with an appended duplicate as a control | 6,216 bytes | 8 |
+
+Before the first restart, the read-only credential found all eight expected
+sources at version 1, so manual recovery selected zero rows. On restart,
+Filebeat counted one duplicate conflict and zero new creates. The appended
+control caused one additional duplicate conflict. Across both restarts all
+eight sources and versions remained unchanged. A separate read-only check
+compared five raw registry captures, eight stored sources and the SQLite
+snapshot digest without importing the lab code.
+
+Initial attempts rejected Filebeat's exact startup license query and the
+leading whitespace in its bulk request. The passing harness permits that
+startup query and still verifies the complete create target and payload.
+This is one ambiguous create on an owned single-node lab. Reproduce with
+[`--tls --receipts --delivery --ack-loss`](ELASTIC.md#recover-from-a-lost-bulk-acknowledgement).
+
 ## Unvalidated boundaries
 
 No production workload, multi-tenant Elastic deployment, hostile filesystem

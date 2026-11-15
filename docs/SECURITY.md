@@ -88,6 +88,14 @@ Snapshot hashes bind bytes under the operator's custody. Keep the journal, raw
 captures, collector credentials and spool private. A read-only Elasticsearch
 credential still exposes source documents in its authorized index.
 
+The optional lost-reply test terminates TLS at a trusted lab-only loopback
+relay, then opens a separately verified TLS connection to the owned node.
+It reuses the ephemeral fixture certificate and accepts only the collector
+credential. The relay forwards only bounded startup reads and one expected
+single-document create. It does not forward bootstrap or observation
+credentials. Keep the captured registry rows private because they include
+local paths. The relay and registry reader are specific to the synthetic test.
+
 The index is not append-only evidence, a global conflict registry, or proof that
 every source event was collected. Keep immutable-by-workflow evidence bundles and
 externally trusted digests outside Elasticsearch. No production access-control,

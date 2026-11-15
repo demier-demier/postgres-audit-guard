@@ -192,6 +192,32 @@ checks all eight. The remaining four were held back before publication to
 create a reproducible backlog. This scenario does not exercise a lost network
 acknowledgement or partially completed bulk request.
 
+## Recover from a lost bulk acknowledgement
+
+Add `--ack-loss` to the `--tls --receipts --delivery` lab command using a new
+private work directory. The first seven synthetic alerts establish a durable
+Filebeat cursor. A one-shot TLS fault injector forwards the eighth alert's
+create request to the owned Elasticsearch node, checks the returned bulk item,
+then closes the collector connection before sending an HTTP response. The lab
+checks the index contents, observes a Filebeat output failure, reads the on-disk
+cursor and abruptly stops the collector.
+
+A separate read-only observation checks the whole batch before Filebeat
+restarts. Manual recovery should produce an empty spool when all eight alerts
+are already in the index. The restarted Filebeat uses its original spool and
+registry. It replays the unacknowledged ID as a create, which Elasticsearch
+rejects as a duplicate. A further restart with an appended duplicate verifies
+that the cursor resumes from the new offset. See the
+[measured results](RESULTS.md#lost-bulk-acknowledgement-2026-11-15).
+
+Both TLS hops verify the lab endpoints using the ephemeral CA. The injector
+accepts only the active collector credential, the observed startup reads and
+one bounded create for a known synthetic ID. It does not forward a retry.
+The compatibility check and on-disk cursor reader are pinned to Filebeat
+8.19.6. For repeatability the lab uses one actor, one node, one index and one
+ambiguous create. This leaves partial bulk failures, Filebeat disk queues,
+index rollover, log rotation and wider outages outside the measured scope.
+
 ## Boundaries for an existing deployment
 
 The files in [`integrations/elastic`](../integrations/elastic/) are an explicit

@@ -1,0 +1,57 @@
+{
+  "schema": "elastic-ack-loss-result/v1",
+  "elasticsearch_version": "8.19.6",
+  "filebeat_version": "8.19.6",
+  "license": "basic",
+  "fixture": "examples/postgres15-local.jsonl",
+  "fixture_sha256": "b816a17d90d7d810a2f73912bce667f2639f009025eea62d2516016add702df1",
+  "lost_acknowledgement": {
+    "prefix": {
+      "stage": "ack-loss-prefix",
+      "documents": 7,
+      "version_per_document": 1,
+      "acknowledged_creates": 7,
+      "observed_duplicate_conflicts": 0,
+      "sources_match": true
+    },
+    "upstream_create": {
+      "document_id": "8b93f5fa6a0d3d649863920e52469177382e88e6471a7a1ac1caf471c51985e2",
+      "bulk_http_status": 200,
+      "item_status": 201,
+      "version": 1
+    },
+    "fault": "tls_disconnect_without_http_response",
+    "collector_reported_output_failure": true,
+    "collector_exit": "SIGKILL",
+    "before_restart": {
+      "confirmed": 8,
+      "mismatch": 0,
+      "missing": 0
+    },
+    "manual_recovery_documents": 0,
+    "restart": {
+      "stage": "ack-loss-restart",
+      "documents": 8,
+      "version_per_document": 1,
+      "acknowledged_creates": 0,
+      "observed_duplicate_conflicts": 1,
+      "sources_match": true
+    },
+    "next_restart_append_control": {
+      "stage": "ack-loss-offset-control",
+      "documents": 8,
+      "version_per_document": 1,
+      "acknowledged_creates": 0,
+      "observed_duplicate_conflicts": 1,
+      "sources_match": true
+    },
+    "offset_bytes": {
+      "acknowledged_prefix": 4831,
+      "after_lost_reply": 4831,
+      "after_retry": 5534,
+      "after_append_control": 6216
+    }
+  },
+  "owned_processes_stopped": true,
+  "selected_loopback_ports_closed": true
+}

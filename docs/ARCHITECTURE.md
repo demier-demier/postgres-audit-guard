@@ -120,6 +120,13 @@ version mismatch goes to review. Unknown IDs, partial results and per-document
 errors abort the observation. Recovery stages a new create-only spool of missing
 rows using their retained, hash-checked canonical bytes.
 
+The lost-reply test adds a one-shot TLS relay on an ephemeral loopback port.
+It forwards a known create to the owned node and drops the downstream response
+after Elasticsearch confirms the write. The runner correlates the upstream
+bulk item's status, an independent read of the index, Filebeat's output metrics
+and the durable registry cursor across process restarts. The relay is test
+infrastructure. Normal collection still connects directly to Elasticsearch.
+
 The searchable index is mutable and outside the evidence seal. Deterministic IDs
 do not authenticate the writer, detect all cross-batch conflicts, or establish
 exactly-once processing. See [the integration guide](ELASTIC.md) for the deployment

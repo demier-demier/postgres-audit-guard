@@ -49,6 +49,11 @@ Technical sources:
 5. [Elasticsearch 8.19 multi get](https://www.elastic.co/guide/en/elasticsearch/reference/8.19/docs-multi-get.html)
    defines real-time reads, required read access and per-document errors.
    The interruption and rewrite probes use only the existing synthetic fixture.
+6. [Filebeat 8.19 Elasticsearch output](https://www.elastic.co/guide/en/beats/filebeat/8.19/elasticsearch-output.html)
+   documents the bulk and duplicate metrics.
+   [Filebeat 8.19.6 startup license adapter](https://github.com/elastic/beats/blob/v8.19.6/libbeat/licenser/elastic_fetcher.go)
+   defines one allowlisted startup read. The fault injector is original and
+   targets only the repository's synthetic fixture and owned lab processes.
 
 Banking/security career relevance is not an employment, regulatory approval or
 operational deployment claim. Rules are deterministic; no model inference is used.

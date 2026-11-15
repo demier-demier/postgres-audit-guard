@@ -16,6 +16,7 @@ SPEC = importlib.util.spec_from_file_location(
 lab = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(lab)
 import elastic_receipts as receipts
+from elastic_ack_fault import expected_create, persisted_offset
 
 
 class HarnessSafety(unittest.TestCase):
@@ -136,6 +137,45 @@ class DeliveryJournal(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "latest recorded"):
                 receipts.recover(db, self.label, out)
             self.assertFalse(out.exists())
+
+
+class AckFaultSafety(unittest.TestCase):
+    def test_only_expected_single_create_can_reach_owned_index(self):
+        key, index = "a" * 64, "synthetic-index"
+        source = {"event": {"id": key}, "@timestamp": "2026-01-02T03:04:05.123456789Z"}
+        action = {"create": {"_index": index, "_id": key}}
+
+        def body(*lines):
+            return ("\n".join(map(json.dumps, lines)) + "\n").encode()
+
+        self.assertTrue(expected_create(body(action, source), index, source))
+        self.assertTrue(expected_create(b"\n" + body(action, source), index, source))
+        for payload in [
+            body({"index": action["create"]}, source),
+            body({"create": {"_index": "other-index", "_id": key}}, source),
+            body({"create": {"_index": index, "_id": key, "pipeline": "other"}}, source),
+            body(action, {"event": {"id": "b" * 64}}),
+            body(action, {**source, "unapproved": "extra content"}),
+            body(action, source, action, source),
+            body(action),
+            b'{"create":{},"create":' + json.dumps(action["create"]).encode() + b'}\n'
+            + json.dumps(source).encode() + b'\n',
+        ]:
+            self.assertFalse(expected_create(payload, index, source))
+
+    def test_cursor_ignores_other_files_and_a_partial_last_record(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.ndjson"
+            ledger = root / "registry/filebeat/log.json"
+            ledger.parent.mkdir(parents=True)
+            entries = [
+                {"op": "set", "id": 1},
+                {"v": {"meta": {"source": str(source)}, "cursor": {"offset": 25}}},
+                {"v": {"meta": {"source": str(root / "other")}, "cursor": {"offset": 60}}},
+            ]
+            ledger.write_text("".join(json.dumps(entry) + "\n" for entry in entries) + '{"v":{"meta"')
+            self.assertEqual(persisted_offset(root, source), 25)
 
 
 if __name__ == "__main__":

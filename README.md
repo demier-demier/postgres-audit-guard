@@ -88,6 +88,8 @@ retains conflicting payloads privately for a reviewer. Its
 [delivery reconciliation](docs/ELASTIC.md#reconcile-delivery-and-recover-missing-alerts)
 compares accepted alerts with Elasticsearch and rebuilds a spool for explicitly
 missing IDs after an interrupted handoff.
+The [lost acknowledgement lab](docs/ELASTIC.md#recover-from-a-lost-bulk-acknowledgement)
+tests what happens when the index commits a write but Filebeat loses the reply.
 
 ```sh
 cargo run --release --locked -- prepare-elastic \

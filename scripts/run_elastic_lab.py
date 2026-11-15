@@ -128,6 +128,7 @@ def cleanup(processes, handles):
 
 
 def main():
+    import elastic_ack_fault
     import elastic_lab_tls
 
     parser = argparse.ArgumentParser(description=__doc__)
@@ -139,7 +140,10 @@ def main():
     parser.add_argument("--receipts", action="store_true", help="Exercise durable classification before collection")
     parser.add_argument("--delivery", action="store_true",
                         help="Exercise a bounded Filebeat interruption and recovery with --tls --receipts")
+    parser.add_argument("--ack-loss", action="store_true",
+                        help="Drop a committed bulk reply on the owned TLS path with --delivery")
     args = parser.parse_args()
+    require(not args.ack_loss or args.delivery, "Lost acknowledgement testing requires --delivery")
     require(not args.delivery or (args.tls and args.receipts), "Delivery recovery requires --tls --receipts")
     require(os.name == "posix", "Lab process isolation is supported on macOS/Linux only")
     require(os.geteuid() != 0, "Run this isolated lab as a non-root user")
@@ -348,10 +352,11 @@ def main():
                 for key, doc in expected_docs.items()
             )
 
-        def start_filebeat(name, registry, source):
+        def start_filebeat(name, registry, source, fault_port=None):
             port = available_ports(1)[0]
             bound_ports.append(port)
-            fb_env = dict(env, PAG_INPUT=str(source), PAG_ENDPOINT=endpoint, PAG_MONITOR_PORT=str(port))
+            output = endpoint if fault_port is None else f"https://127.0.0.1:{fault_port}"
+            fb_env = dict(env, PAG_INPUT=str(source), PAG_ENDPOINT=output, PAG_MONITOR_PORT=str(port))
             command = [str(fb_home / "filebeat"), "-e", "-c", str(CONFIG / "filebeat.yml"),
                        "--path.home", str(fb_home), "--path.config", str(CONFIG), "--path.data", str(registry), "--path.logs", str(work / (name + "-logs"))]
             if args.tls:
@@ -366,6 +371,8 @@ def main():
                 command += ["-E", "output.elasticsearch.api_key=${PAG_COLLECTOR_KEY}",
                             "-E", "output.elasticsearch.ssl.certificate_authorities=[${PAG_CA}]",
                             "-E", "output.elasticsearch.ssl.verification_mode=full"]
+            if fault_port is not None:
+                command += ["-E", "output.elasticsearch.compression_level=0"]
             process = start(command, name, fb_env)
             monitor = f"http://127.0.0.1:{port}"
 
@@ -376,6 +383,12 @@ def main():
             return process, stats
 
         stages = []
+
+        def append_rows(source, payload):
+            with source.open("ab") as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
 
         def complete_stage(process, stats, expected_acks, expected_duplicates, expected, name):
             target = version_one(expected)
@@ -403,10 +416,7 @@ def main():
                 expected = expected_docs
             process, stats = start_filebeat(name, registry, source or spool)
             if append:
-                with spool.open("ab") as stream:
-                    stream.write(spool_bytes)
-                    stream.flush()
-                    os.fsync(stream.fileno())
+                append_rows(spool, spool_bytes)
 
             staged = complete_stage(process, stats, expected_acks, expected_duplicates, expected, name)
             stop(process)
@@ -416,6 +426,7 @@ def main():
 
         registry = work / "filebeat-state"
         delivery_result = None
+        ack_loss_result = None
         if args.delivery:
             _, reader_key = es_request("POST", "/_security/api_key", {
                 "name": "pag-synthetic-reader", "expiration": "30m",
@@ -510,6 +521,76 @@ def main():
             receipt_call("observe-delivery", *batch_args, "--observation", "denied-probe",
                          "--index", INDEX, "--snapshot", str(denied_capture), code=1)
             receipt_call("delivery-receipt", "--observation", "denied-probe", code=1)
+            if args.ack_loss:
+                es_request("DELETE", "/" + INDEX)
+                es_request("PUT", "/" + INDEX, json.loads((CONFIG / "index.json").read_text()))
+                source = work / "ack-loss.ndjson"
+                lines = spool_bytes.splitlines(keepends=True)
+                source.write_bytes(b"".join(lines[:-1]))
+                prefix_offset = source.stat().st_size
+                final_id = docs[-1]["event"]["id"]
+                prefix = {key: doc for key, doc in expected_docs.items() if key != final_id}
+                saved = work / "ack-loss-state"
+                stage("ack-loss-prefix", saved, 7, 0, source=source, expected=prefix)
+                initial = stages.pop()
+
+                def checkpoint(label, expected_offset):
+                    private_ledger = saved / "registry/filebeat/log.json"
+                    require(elastic_ack_fault.persisted_offset(saved, source) == expected_offset,
+                            "Unexpected persisted cursor at " + label)
+                    shutil.copyfile(private_ledger, work / ("ack-loss-" + label + "-registry.jsonl"))
+                    return expected_offset
+
+                checkpoint("acknowledged-prefix", prefix_offset)
+                proxy = elastic_ack_fault.suppress_bulk_ack(
+                    http_port, ca, es_conf / "tls/node.pem", es_conf / "tls/node.key", collector, INDEX, docs[-1],
+                )
+                with proxy as (fault_port, fault):
+                    bound_ports.append(fault_port)
+                    process, stats = start_filebeat("ack-loss-collector", saved, source, fault_port=fault_port)
+                    append_rows(source, lines[-1])
+
+                    def accepted_without_reply():
+                        require(fault.error is None, fault.error)
+                        return fault.created
+
+                    upstream = wait_for(accepted_without_reply, [process, es], "owned upstream bulk create")
+                    require(snapshot() == version_one(expected_docs), "Accepted bulk did not preserve exact fixture state")
+                    checkpoint("before-disconnect", prefix_offset)
+                    fault.release.set()
+
+                    def failed_reply():
+                        require(fault.error is None, fault.error)
+                        output = stats().get("libbeat", {}).get("output", {}).get("events", {})
+                        require(output.get("acked", 0) == 0, "Collector acknowledged the withheld reply")
+                        return fault.disconnected.is_set() and output.get("failed", 0) > 0
+
+                    wait_for(failed_reply, [process, es], "collector observing lost reply", timeout=20)
+                    lost_offset = checkpoint("after-disconnect", prefix_offset)
+                    os.killpg(process.pid, signal.SIGKILL)
+                    require(process.wait(timeout=15) == -signal.SIGKILL, "Collector did not stop after lost reply")
+                before_retry = observe("ack-lost-before-restart")
+                require(before_retry["counts"] == {"confirmed": 8, "missing": 0, "mismatch": 0},
+                        "Stored documents were not independently confirmed before collector restart")
+                empty_retry = receipt_call("recover-missing", "--observation", "ack-lost-before-restart",
+                                           "--output", str(work / "ack-lost-no-manual-recovery.ndjson"))
+                require(empty_retry["documents"] == 0, "Read-side recovery must not spool committed documents")
+                stage("ack-loss-restart", saved, 0, 1, source=source)
+                restarted = stages.pop()
+                final_offset = checkpoint("after-retry", source.stat().st_size)
+                append_rows(source, lines[0])
+                stage("ack-loss-offset-control", saved, 0, 1, source=source)
+                control = stages.pop()
+                probe_offset = checkpoint("after-append", source.stat().st_size)
+                ack_loss_result = {
+                    "prefix": initial, "upstream_create": upstream, "fault": "tls_disconnect_without_http_response",
+                    "collector_reported_output_failure": True, "collector_exit": "SIGKILL",
+                    "before_restart": before_retry["counts"], "manual_recovery_documents": empty_retry["documents"],
+                    "restart": restarted, "next_restart_append_control": control,
+                    "offset_bytes": {"acknowledged_prefix": prefix_offset, "after_lost_reply": lost_offset,
+                                     "after_retry": final_offset, "after_append_control": probe_offset},
+                }
+
             es_request("DELETE", "/_security/api_key", {"ids": [reader_key["id"]]})
             revoked, _ = request(endpoint, "POST", mget, query, expected=(401,), opener=opener, authorization=reader)
             delivery_result = {
@@ -629,6 +710,8 @@ def main():
             report["limitations"].append(
                 "A matching read is evidence of index state at capture time. It cannot attribute a write or prove exactly-once delivery."
             )
+        if ack_loss_result is not None:
+            report["lost_acknowledgement"] = ack_loss_result
         result = report
     finally:
         cleanup(processes, handles)
