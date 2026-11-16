@@ -127,6 +127,14 @@ bulk item's status, an independent read of the index, Filebeat's output metrics
 and the durable registry cursor across process restarts. The relay is test
 infrastructure. Normal collection still connects directly to Elasticsearch.
 
+The direct Bulk API workflow uses the journal's accepted documents to build
+create-only requests. One transaction records the request and response
+digests plus validated item statuses in request order. It checks the concrete
+index, exact IDs and accepted payloads before committing. Outcome receipts and
+read-back observations model different evidence: a conflict can occur for an
+identical replay or a conflicting payload. Missing-row recovery consults both
+tables and holds previously failed IDs for operator review.
+
 The searchable index is mutable and outside the evidence seal. Deterministic IDs
 do not authenticate the writer, detect all cross-batch conflicts, or establish
 exactly-once processing. See [the integration guide](ELASTIC.md) for the deployment

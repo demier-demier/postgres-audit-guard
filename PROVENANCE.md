@@ -54,6 +54,10 @@ Technical sources:
    [Filebeat 8.19.6 startup license adapter](https://github.com/elastic/beats/blob/v8.19.6/libbeat/licenser/elastic_fetcher.go)
    defines one allowlisted startup read. The fault injector is original and
    targets only the repository's synthetic fixture and owned lab processes.
+7. [Elasticsearch 8.19 Bulk API](https://www.elastic.co/guide/en/elasticsearch/reference/8.19/docs-bulk.html)
+   documents create-only writes, per-item results and response order. The
+   mixed-outcome policy probe uses the same original fixture and a lab-only
+   ingest rule.
 
 Banking/security career relevance is not an employment, regulatory approval or
 operational deployment claim. Rules are deterministic; no model inference is used.

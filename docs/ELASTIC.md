@@ -218,6 +218,54 @@ The compatibility check and on-disk cursor reader are pinned to Filebeat
 ambiguous create. This leaves partial bulk failures, Filebeat disk queues,
 index rollover, log rotation and wider outages outside the measured scope.
 
+## Record mixed bulk outcomes
+
+Use this direct Bulk API path when the operator can capture the submitted
+request and exact response body. Filebeat's aggregated metrics remain
+separate. Select the accepted document IDs from `delivery-query`.
+
+```sh
+umask 077
+index=postgres-audit-guard-lab
+python3 scripts/elastic_receipts.py --journal receipts.db bulk-request \
+  --batch initial --index "$index" --document "$FIRST_ID" --document "$SECOND_ID" \
+  --output bulk.ndjson
+# Use a private curl config containing the create-only Authorization header.
+curl -q --fail --silent --show-error --cacert "$ELASTIC_CA" \
+  --config "$ELASTIC_WRITE_CONFIG" -H 'Content-Type: application/x-ndjson' \
+  --data-binary @bulk.ndjson "$ELASTIC_URL/_bulk" > bulk-response.json
+python3 scripts/elastic_receipts.py --journal receipts.db record-bulk \
+  --batch initial --index "$index" --attempt first-send \
+  --request bulk.ndjson --response bulk-response.json
+python3 scripts/elastic_receipts.py --journal receipts.db bulk-receipt --attempt first-send
+```
+
+`record-bulk` exits 2 after committing a receipt with item failures, 0 after an
+all-created receipt, and 1 on an invalid capture or storage failure. It
+requires all items in request order and aborts on mismatched IDs, foreign
+indices, ambiguous JSON, unsupported success results or a conflicting attempt
+label. Use full responses with status, ID, index, result and error type.
+Retrying the same label with identical capture bytes returns its receipt.
+The CLI stores SHA-256 digests and status, classification and error type per
+item. Store exact bodies separately in private storage if they will be needed
+for review. It does not collect them from Filebeat or verify their origin.
+
+A version conflict marks an existing ID for comparison. Read back the expected
+source and version before deciding if it was an ordinary replay. Every
+recorded item failure is held out of `recover-missing` for the same batch and
+index when that document is absent. This includes retryable errors. An
+operator reviews the cause and performs any authorized retry explicitly.
+Use one journal per concrete index incarnation. This CLI neither schedules
+retries nor releases retained failure history automatically. A bulk attempt
+supports up to 1,000 IDs, 16 MiB per body and 2,000 attempts per journal, subject
+to the existing SQLite page cap. Valid captures migrate v1/v2 journals
+transactionally.
+
+Add `--mixed-bulk` to `--tls --receipts --delivery` to exercise Elasticsearch's
+actual Bulk API with three original synthetic alerts. A scoped write key sends
+one new document, one exact replay and one document rejected by a lab-only
+ingest rule. A scoped read key checks which sources reached the index.
+
 ## Boundaries for an existing deployment
 
 The files in [`integrations/elastic`](../integrations/elastic/) are an explicit

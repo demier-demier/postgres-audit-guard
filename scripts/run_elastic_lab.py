@@ -62,9 +62,15 @@ def available_ports(count):
 
 
 def request(base, method, path, body=None, expected=(200,), *, opener=None, authorization=None):
-    # URLs are constructed exclusively from ports chosen by this harness.
     data = None if body is None else json_bytes(body)
-    headers = {"Content-Type": "application/json"}
+    status, payload = exchange(base, method, path, data, expected, opener=opener, authorization=authorization)
+    return status, json.loads(payload)
+
+
+def exchange(base, method, path, data, expected=(200,), *, opener=None, authorization=None,
+             content_type="application/json"):
+    # URLs are constructed exclusively from ports chosen by this harness.
+    headers = {"Content-Type": content_type}
     if authorization is not None:
         headers["Authorization"] = authorization
     query = urllib.request.Request(
@@ -78,7 +84,7 @@ def request(base, method, path, body=None, expected=(200,), *, opener=None, auth
         status, payload = error.code, error.read(4 * 1024 * 1024 + 1)
     require(status in expected, f"Unexpected HTTP status {status} during {method}")
     require(len(payload) <= 4 * 1024 * 1024, "HTTP response exceeds lab limit")
-    return status, json.loads(payload)
+    return status, payload
 
 
 def wait_for(check, processes, label, timeout=90):
@@ -142,8 +148,11 @@ def main():
                         help="Exercise a bounded Filebeat interruption and recovery with --tls --receipts")
     parser.add_argument("--ack-loss", action="store_true",
                         help="Drop a committed bulk reply on the owned TLS path with --delivery")
+    parser.add_argument("--mixed-bulk", action="store_true",
+                        help="Capture real bulk item outcomes with --delivery")
     args = parser.parse_args()
     require(not args.ack_loss or args.delivery, "Lost acknowledgement testing requires --delivery")
+    require(not args.mixed_bulk or args.delivery, "Mixed bulk testing requires --delivery")
     require(not args.delivery or (args.tls and args.receipts), "Delivery recovery requires --tls --receipts")
     require(os.name == "posix", "Lab process isolation is supported on macOS/Linux only")
     require(os.geteuid() != 0, "Run this isolated lab as a non-root user")
@@ -427,6 +436,7 @@ def main():
         registry = work / "filebeat-state"
         delivery_result = None
         ack_loss_result = None
+        mixed_bulk_result = None
         if args.delivery:
             _, reader_key = es_request("POST", "/_security/api_key", {
                 "name": "pag-synthetic-reader", "expiration": "30m",
@@ -591,6 +601,77 @@ def main():
                                      "after_retry": final_offset, "after_append_control": probe_offset},
                 }
 
+            if args.mixed_bulk:
+                # Create a separate fixture incarnation with an injected failure
+                # before the regular final pipeline's validation.
+                es_request("DELETE", "/" + INDEX)
+                ids = [doc["event"]["id"] for doc in docs[:3]]
+                pipeline = "pag-mixed-bulk-test"
+                index = json.loads((CONFIG / "index.json").read_text())
+                index["settings"]["index.final_pipeline"] = pipeline
+                es_request("PUT", "/_ingest/pipeline/" + pipeline, {
+                    "processors": [
+                        {"script": {
+                            "source": "if (ctx.event.id.equals(params.rejected)) { "
+                                      "throw new IllegalArgumentException('SYNTHETIC-MIXED-BULK-REVIEW'); }",
+                            "params": {"rejected": ids[2]},
+                        }},
+                        {"pipeline": {"name": "postgres-audit-guard-v1"}},
+                    ],
+                })
+                es_request("PUT", "/" + INDEX, index)
+                # Do not reuse observations from the previous index incarnation.
+                journal[-1] = str(work / "mixed-bulk-receipts.db")
+                receipt_call("init")
+                receipt_call("submit", *batch_args, "--input", str(work / "ready.ndjson"), "--binary", str(binary))
+                collector_request("PUT", f"/{INDEX}/_create/{ids[1]}", docs[1], expected=(201,))
+                req_path, resp_path = work / "mixed-bulk.ndjson", work / "mixed-bulk-response.json"
+                parameters = (*batch_args, "--index", INDEX)
+                requested = receipt_call("bulk-request", *parameters, "--output", str(req_path),
+                                         *(part for key in ids for part in ("--document", key)))
+                status, raw = exchange(endpoint, "POST", "/_bulk", req_path.read_bytes(),
+                                       opener=opener, authorization=collector, content_type="application/x-ndjson")
+                resp_path.write_bytes(raw)
+                report_args = ("--attempt", "mixed-bulk")
+                capture_args = (*parameters, *report_args, "--request", str(req_path), "--response", str(resp_path))
+                mixed = receipt_call("record-bulk", *capture_args, code=2)
+                require(mixed["counts"] == {"created": 1, "conflict": 1, "rejected": 1}
+                        and [item["status"] for item in mixed["items"]] == [201, 409, 400],
+                        "Mixed Elasticsearch bulk response did not match expected outcomes")
+                require(requested["request_sha256"] == mixed["request_sha256"]
+                        and hashlib.sha256(raw).hexdigest() == mixed["response_sha256"],
+                        "Persisted bulk receipt digests differ from captured bytes")
+                require(receipt_call("bulk-receipt", *report_args) == mixed
+                        and receipt_call("record-bulk", *capture_args, code=2) == mixed,
+                        "Bulk receipt changed on reopening or idempotent retry")
+                before = snapshot()
+                require(before == version_one({key: expected_docs[key] for key in ids[:2]}),
+                        "Mixed batch changed the existing duplicate or stored rejected data")
+                observation = observe("mixed-bulk-readback")
+                require(observation["counts"] == {"confirmed": 2, "missing": 6, "mismatch": 0},
+                        "Read-only verification disagrees with the mixed result")
+                recovered = work / "mixed-bulk-missing.ndjson"
+                recovery = receipt_call("recover-missing", "--observation", "mixed-bulk-readback",
+                                        "--output", str(recovered))
+                recovered_ids = {json.loads(line)["event"]["id"] for line in recovered.read_bytes().splitlines()}
+                require(recovery["withheld_bulk_failures"] == [ids[2]]
+                        and recovered_ids == set(expected_docs) - set(ids),
+                        "Recovery did not withhold the rejected ID")
+                recoverable = {key: doc for key, doc in expected_docs.items() if key != ids[2]}
+                stage("mixed-bulk-recover-unattempted", work / "mixed-bulk-collector-state", 5, 0,
+                      source=recovered, expected=recoverable)
+                after_recovery = observe("mixed-bulk-after-recovery")
+                require(after_recovery["counts"] == {"confirmed": 7, "missing": 1, "mismatch": 0},
+                        "The recovery did not leave exactly the held rejection")
+                mixed_bulk_result = {
+                    "bulk_http_status": status, "request_sha256": mixed["request_sha256"],
+                    "counts": mixed["counts"], "items": mixed["items"],
+                    "same_attempt_returns_same_receipt": True, "readback": observation["counts"],
+                    "manual_recovery_documents": recovery["documents"],
+                    "withheld_bulk_failures": recovery["withheld_bulk_failures"],
+                    "recovery_collector": stages.pop(), "after_recovery": after_recovery["counts"],
+                    "confirmed_sources_match_at_version_1": True,
+                }
             es_request("DELETE", "/_security/api_key", {"ids": [reader_key["id"]]})
             revoked, _ = request(endpoint, "POST", mget, query, expected=(401,), opener=opener, authorization=reader)
             delivery_result = {
@@ -712,6 +793,8 @@ def main():
             )
         if ack_loss_result is not None:
             report["lost_acknowledgement"] = ack_loss_result
+        if mixed_bulk_result is not None:
+            report["mixed_bulk"] = mixed_bulk_result
         result = report
     finally:
         cleanup(processes, handles)

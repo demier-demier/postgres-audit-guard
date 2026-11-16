@@ -96,6 +96,15 @@ single-document create. It does not forward bootstrap or observation
 credentials. Keep the captured registry rows private because they include
 local paths. The relay and registry reader are specific to the synthetic test.
 
+The bulk recorder trusts the operator's paired captures. It validates create
+actions, response order, document IDs, accepted payloads, item result shapes
+and the top-level errors flag. Capture hashes identify bytes but do not prove
+provenance, completeness across requests or authenticity of the Elasticsearch
+instance. A fabricated failure could suppress automated spool generation for
+an ID within that journal. Restrict capture writes and keep the original
+encrypted or access-controlled, since error messages can echo indexed fields.
+The receipt stores typed errors and digests without copying raw reasons.
+
 The index is not append-only evidence, a global conflict registry, or proof that
 every source event was collected. Keep immutable-by-workflow evidence bundles and
 externally trusted digests outside Elasticsearch. No production access-control,

@@ -274,6 +274,32 @@ startup query and still verifies the complete create target and payload.
 This is one ambiguous create on an owned single-node lab. Reproduce with
 [`--tls --receipts --delivery --ack-loss`](ELASTIC.md#recover-from-a-lost-bulk-acknowledgement).
 
+## Mixed bulk outcomes (2026-11-16)
+
+In the [macOS run](../examples/elastic/result-mixed-bulk-macos.json), one
+real Bulk API request returned HTTP 200 and three item results: a 201
+create, a 409 version conflict and a 400 rejection by a lab-only ingest
+policy. The 409 was an intentional exact replay. A separate read-only
+check confirmed its source and version, along with the new create.
+
+The SQLite journal retained all three item outcomes and both exact capture
+digests. Reopening the database and submitting the same capture again
+returned the same receipt. The read showed six missing alerts, including
+the rejected one. The recovery spool withheld that ID and Filebeat delivered
+the five unattempted alerts. A second read confirmed seven records at
+version 1 with their original sources. The rejected alert remained absent
+and available for human review in the receipt. A separate raw-evidence
+check compared the three item rows, the two capture digests and the nine
+found results across both read snapshots.
+
+The first local attempt hit an HTTP 401 while the fresh test node was
+starting. In the next attempt Elastic's generic fail processor returned
+item status 500, so the final probe used an explicit invalid-argument
+policy to exercise the intended 400 branch. That outcome concerns
+synthetic ingestion policy. This lab does not measure financial detection
+accuracy, production throughput or Filebeat's own mixed-bulk response
+capture. See the [reproduction steps](ELASTIC.md#record-mixed-bulk-outcomes).
+
 ## Unvalidated boundaries
 
 No production workload, multi-tenant Elastic deployment, hostile filesystem

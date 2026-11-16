@@ -10,6 +10,7 @@ on:
       - 'scripts/elastic_lab_tls.py'
       - 'scripts/elastic_receipts.py'
       - 'tests/test_elastic_lab.py'
+      - 'tests/test_elastic_bulk.py'
       - 'Cargo.*'
       - '.github/workflows/elastic-lab.yml'
   pull_request:
@@ -21,6 +22,7 @@ on:
       - 'scripts/elastic_lab_tls.py'
       - 'scripts/elastic_receipts.py'
       - 'tests/test_elastic_lab.py'
+      - 'tests/test_elastic_bulk.py'
       - 'Cargo.*'
       - '.github/workflows/elastic-lab.yml'
 permissions:
@@ -33,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --release --locked
-      - run: python3 -m unittest discover -s tests -p test_elastic_lab.py
+      - run: python3 -m unittest discover -s tests -p 'test_elastic*.py'
       - name: Fetch pinned vendor archives and verify vendor SHA-512 checksums
         shell: bash
         run: |
@@ -65,9 +67,9 @@ jobs:
           name: elastic-integration-result
           path: ${{ runner.temp }}/elastic-controlled-lab/result.json
           if-no-files-found: error
-      - name: Prove TLS, interrupted delivery recovery and lost acknowledgement replay
+      - name: Prove TLS, lost acknowledgement replay and mixed bulk evidence
         run: >-
-          python3 scripts/run_elastic_lab.py --tls --receipts --delivery --ack-loss
+          python3 scripts/run_elastic_lab.py --tls --receipts --delivery --ack-loss --mixed-bulk
           --elasticsearch-home "$RUNNER_TEMP/elastic-vendor/elasticsearch-8.19.6"
           --filebeat-home "$RUNNER_TEMP/elastic-vendor/filebeat-8.19.6-linux-x86_64"
           --work-dir "$RUNNER_TEMP/elastic-tls-lab"

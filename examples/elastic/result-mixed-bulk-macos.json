@@ -1,0 +1,63 @@
+{
+  "schema": "elastic-mixed-bulk-result/v1",
+  "elasticsearch_version": "8.19.6",
+  "filebeat_version": "8.19.6",
+  "license": "basic",
+  "fixture": "examples/postgres15-local.jsonl",
+  "fixture_sha256": "b816a17d90d7d810a2f73912bce667f2639f009025eea62d2516016add702df1",
+  "mixed_bulk": {
+    "bulk_http_status": 200,
+    "request_sha256": "15b7a310c125261687b14bb8c0d88c3fe84e03510b09fe257b7fdad4a6e6e92e",
+    "counts": {
+      "conflict": 1,
+      "created": 1,
+      "rejected": 1
+    },
+    "items": [
+      {
+        "disposition": "created",
+        "document_id": "661c8b8b8ea80ecb7447714067f6bbb100d077b0bc1fb6aa41621c726648f1ea",
+        "error_type": null,
+        "status": 201
+      },
+      {
+        "disposition": "conflict",
+        "document_id": "572a20a575354a712140916117c6461902942df3761f71ba589d3ee25dfbc24f",
+        "error_type": "version_conflict_engine_exception",
+        "status": 409
+      },
+      {
+        "disposition": "rejected",
+        "document_id": "db5978a8580acf7298d9b69a7d8f058cb01363a44d98b8cd68ae515c8e6fc8e0",
+        "error_type": "script_exception",
+        "status": 400
+      }
+    ],
+    "same_attempt_returns_same_receipt": true,
+    "readback": {
+      "confirmed": 2,
+      "mismatch": 0,
+      "missing": 6
+    },
+    "manual_recovery_documents": 5,
+    "withheld_bulk_failures": [
+      "db5978a8580acf7298d9b69a7d8f058cb01363a44d98b8cd68ae515c8e6fc8e0"
+    ],
+    "recovery_collector": {
+      "stage": "mixed-bulk-recover-unattempted",
+      "documents": 7,
+      "version_per_document": 1,
+      "acknowledged_creates": 5,
+      "observed_duplicate_conflicts": 0,
+      "sources_match": true
+    },
+    "after_recovery": {
+      "confirmed": 7,
+      "mismatch": 0,
+      "missing": 1
+    },
+    "confirmed_sources_match_at_version_1": true
+  },
+  "owned_processes_stopped": true,
+  "selected_loopback_ports_closed": true
+}

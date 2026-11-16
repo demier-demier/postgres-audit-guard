@@ -90,6 +90,9 @@ compares accepted alerts with Elasticsearch and rebuilds a spool for explicitly
 missing IDs after an interrupted handoff.
 The [lost acknowledgement lab](docs/ELASTIC.md#recover-from-a-lost-bulk-acknowledgement)
 tests what happens when the index commits a write but Filebeat loses the reply.
+[Bulk outcome receipts](docs/ELASTIC.md#record-mixed-bulk-outcomes) preserve
+per-document Elasticsearch errors and keep affected IDs out of missing-alert
+recovery pending review.
 
 ```sh
 cargo run --release --locked -- prepare-elastic \
