@@ -7,9 +7,11 @@ import sqlite3
 import sys
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import elastic_receipts as journal
+import elastic_review as review
 
 
 class MixedBulkReceipt(unittest.TestCase):
@@ -59,7 +61,7 @@ class MixedBulkReceipt(unittest.TestCase):
         self.assertEqual(mixed, self.capture(self.items))
         self.assertNotIn("PRIVATE-FIXTURE-CONTENT", json.dumps(mixed))
         with closing(journal.connect(self.db, write=False)) as db:
-            self.assertEqual(journal.schema_version(db), 3)
+            self.assertEqual(journal.schema_version(db), 4)
             self.assertEqual(journal.bulk_receipt(db, self.attempt), mixed)
             self.assertEqual(journal.receipt(db, "initial")["counts"]["accepted"], 4)
         with self.assertRaisesRegex(ValueError, "already binds"):
@@ -124,6 +126,112 @@ class MixedBulkReceipt(unittest.TestCase):
             other = journal.recover(db, "other", self.root / "other-recovery.ndjson")
             self.assertEqual(other["documents"], 3)
             self.assertNotIn("withheld_bulk_failures", other)
+
+    def observe_missing(self, label):
+        snapshot = self.root / "missing.json"
+        snapshot.write_text(json.dumps({"docs": [
+            {"_id": key, "_index": self.index, "found": False} for key in self.ids
+        ]}))
+        return journal.observe(self.db, "initial", label, self.index, snapshot)
+
+    def review(self, label, observation, decision="retry", attempt=None):
+        with closing(journal.connect(self.db, write=True)) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            return review.record(db, label, attempt or self.attempt, self.ids[2], observation, "reviewer-1", decision,
+                                 "policy-corrected" if decision == "retry" else "investigation-required")
+
+    def export_review(self, label, output):
+        with closing(journal.connect(self.db, write=True)) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            return review.materialize(db, label, output)
+
+    def test_review_preserves_exact_basis_and_exports_only_selected_source(self):
+        self.capture(self.items)
+        self.observe_missing("after-failure")
+        recorded = self.review("approved", "after-failure")
+        self.assertEqual(self.review("approved", "after-failure"), recorded)
+        with closing(journal.connect(self.db, write=False)) as db:
+            self.assertEqual(review.show(db, "approved"), recorded)
+        out = self.root / "approved.ndjson"
+        materialized = self.export_review("approved", out)
+        self.assertEqual(materialized["documents"], 1)
+        self.assertEqual(json.loads(out.read_bytes()), self.docs[self.ids[2]])
+        self.assertEqual(materialized["basis_sha256"], recorded["basis_sha256"])
+        with self.assertRaises(FileExistsError):
+            self.export_review("approved", out)
+        with self.assertRaisesRegex(ValueError, "already binds"):
+            self.review("approved", "after-failure", decision="hold")
+
+    def test_later_hold_revokes_export_of_an_earlier_retry_decision(self):
+        self.capture(self.items)
+        self.observe_missing("after-failure")
+        self.review("approved", "after-failure")
+        self.review("held", "after-failure", decision="hold")
+        with self.assertRaisesRegex(ValueError, "later review"):
+            self.export_review("approved", self.root / "superseded.ndjson")
+        with self.assertRaisesRegex(ValueError, "holds"):
+            self.export_review("held", self.root / "held.ndjson")
+        self.assertFalse((self.root / "superseded.ndjson").exists())
+
+    def test_new_observation_or_bulk_result_invalidates_old_review(self):
+        self.capture(self.items)
+        self.observe_missing("first")
+        self.review("approved", "first")
+        self.observe_missing("newer")
+        with self.assertRaisesRegex(ValueError, "fresh observation"):
+            self.export_review("approved", self.root / "stale.ndjson")
+        self.review("new-approval", "newer")
+        journal.record_bulk(self.db, "initial", "second-attempt", self.index, self.request, self.response)
+        with self.assertRaisesRegex(ValueError, "newer bulk"):
+            self.export_review("new-approval", self.root / "older-result.ndjson")
+        with self.assertRaisesRegex(ValueError, "fresh observation"):
+            self.review("too-early", "newer", attempt="second-attempt")
+        self.observe_missing("after-second")
+        self.review("new-result", "after-second", attempt="second-attempt")
+        self.assertEqual(self.export_review("new-result", self.root / "current.ndjson")["documents"], 1)
+
+    def test_observation_before_bulk_and_legacy_watermark_require_fresh_capture(self):
+        self.observe_missing("before-failure")
+        self.capture(self.items)
+        with self.assertRaisesRegex(ValueError, "fresh observation"):
+            self.review("old-observation", "before-failure")
+        self.observe_missing("after-failure")
+        with closing(journal.connect(self.db, write=True)) as db, db:
+            db.execute("UPDATE observations SET bulk_watermark=NULL WHERE id='after-failure'")
+        with self.assertRaisesRegex(ValueError, "fresh observation"):
+            self.review("legacy-observation", "after-failure")
+        with closing(journal.connect(self.db, write=False)) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM bulk_reviews").fetchone()[0], 0)
+
+    def test_confirmed_or_mismatched_source_never_releases_a_reviewed_retry(self):
+        self.capture(self.items)
+        for version in (1, 2):
+            snapshot = self.root / "found.json"
+            hits = [{"_id": key, "_index": self.index, "found": False} for key in self.ids]
+            hits[2].update(found=True, _source=self.docs[self.ids[2]], _version=version)
+            snapshot.write_text(json.dumps({"docs": hits}))
+            label = "found-" + str(version)
+            journal.observe(self.db, "initial", label, self.index, snapshot)
+            with self.assertRaisesRegex(ValueError, "explicit absence"):
+                self.review("no-retry-" + str(version), label)
+
+    def test_review_export_excludes_a_concurrent_evidence_writer(self):
+        self.capture(self.items)
+        self.observe_missing("current")
+        self.review("approved", "current")
+        write = journal.write_payloads
+
+        def concurrent_write(rows, output):
+            with closing(sqlite3.connect(self.db, timeout=0)) as other:
+                with self.assertRaisesRegex(sqlite3.OperationalError, "locked"):
+                    other.execute("BEGIN IMMEDIATE")
+            return write(rows, output)
+
+        with patch.object(journal, "write_payloads", side_effect=concurrent_write):
+            self.assertEqual(self.export_review("approved", self.root / "current.ndjson")["documents"], 1)
+        self.review("hold-after-export", "current", decision="hold")
+        with self.assertRaisesRegex(ValueError, "later review"):
+            self.export_review("approved", self.root / "revoked.ndjson")
 
 
 if __name__ == "__main__":

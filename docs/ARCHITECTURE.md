@@ -135,6 +135,16 @@ read-back observations model different evidence: a conflict can occur for an
 identical replay or a conflicting payload. Missing-row recovery consults both
 tables and holds previously failed IDs for operator review.
 
+Journal schema v4 adds a bulk-result watermark to each new observation.
+Legacy observations retain a null watermark and require a new capture before
+review. An operator records a decision bound to a failure, a declared actor
+label, a reason code, the source digest and a fresh observation. The basis
+digest includes the exact bulk request/response hashes and snapshot hash.
+An approved spool is built only when the selected review is still the latest
+decision for that source and scope. Publication holds a SQLite write
+transaction so a concurrent evidence writer cannot invalidate the checked
+state before the completed output becomes visible.
+
 The searchable index is mutable and outside the evidence seal. Deterministic IDs
 do not authenticate the writer, detect all cross-batch conflicts, or establish
 exactly-once processing. See [the integration guide](ELASTIC.md) for the deployment

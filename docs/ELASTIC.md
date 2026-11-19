@@ -266,6 +266,60 @@ actual Bulk API with three original synthetic alerts. A scoped write key sends
 one new document, one exact replay and one document rejected by a lab-only
 ingest rule. A scoped read key checks which sources reached the index.
 
+## Review held items before retry
+
+After investigating an item failure, correct its technical cause and capture a
+new full-source read with `observe-delivery`. Use a new observation label. The
+review CLI records a decision against the failed attempt and retained source:
+
+```sh
+python3 scripts/elastic_review.py --journal receipts.db record \
+  --review reviewed-001 --attempt first-send --document "$FAILED_ID" \
+  --observation after-investigation --actor reviewer-1 \
+  --decision retry --reason policy-corrected
+python3 scripts/elastic_review.py --journal receipts.db show --review reviewed-001
+python3 scripts/elastic_review.py --journal receipts.db materialize \
+  --review reviewed-001 --output reviewed-retry.ndjson
+```
+
+`materialize` exports the original canonical alert as NDJSON for the create-only
+collector. It verifies source hashes and refuses to replace an existing output.
+It exits 1 if the review is held, superseded or its evidence has become stale.
+The `record` command supports `retry/policy-corrected`,
+`retry/transient-failure-investigated` and `hold/investigation-required`.
+Actor labels are declared pseudonyms, and reason codes record the operator's
+assessment. A retry decision alone does not verify that a policy was fixed.
+Repeating a review label with the same arguments returns its historical record.
+Changed arguments require a new label.
+
+A usable retry review needs the latest failed result for that ID and a latest
+read that explicitly finds the ID absent in the same batch and concrete index.
+The read must have been recorded after every currently recorded bulk result
+in that scope. Any new observation or bulk result invalidates the prior basis.
+A later review for the same source and scope also supersedes the old decision.
+Review export holds an immediate SQLite transaction while checking the basis
+and publishing the completed file. The general `recover-missing` command
+continues to hold failures until an operator uses this explicit path.
+
+Version 4 migrates v1-v3 journals transactionally. Older observations lack the
+bulk-result watermark, so capture a new read before creating a retry decision.
+There is a 2,000-review cap per journal within the existing page cap. Keep
+the database, raw response bodies and exported spool private. The CLI trusts
+the operator's captures and declared identity. Local ordering establishes
+which evidence is latest in the journal; it does not establish elapsed-time
+freshness or capture authenticity.
+
+Use a separate journal per index incarnation. Coordinate retry exports with
+the collector and record the subsequent result. A later hold cannot retract
+a file already consumed by Filebeat. A still-valid approved spool can be
+reconstructed after a local file failure, potentially producing a duplicate
+delivery that the create-only sink will reject.
+
+Add `--review` to `--tls --receipts --delivery --mixed-bulk` in the isolated
+lab. Its decisions come from a scripted synthetic operator. The run tests a
+hold, a stale observation, a newer failed attempt and a policy correction,
+then reads all stored sources and confirms the previous reviews survive.
+
 ## Boundaries for an existing deployment
 
 The files in [`integrations/elastic`](../integrations/elastic/) are an explicit

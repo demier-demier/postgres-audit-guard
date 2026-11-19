@@ -58,6 +58,10 @@ Technical sources:
    documents create-only writes, per-item results and response order. The
    mixed-outcome policy probe uses the same original fixture and a lab-only
    ingest rule.
+8. [SQLite transaction control](https://www.sqlite.org/lang_transaction.html)
+   defines single-writer and immediate-transaction behavior for review and
+   export checks. The reviewed-retry lab scripts a declared synthetic
+   operator, a held source and the correction of its own ingest policy.
 
 Banking/security career relevance is not an employment, regulatory approval or
 operational deployment claim. Rules are deterministic; no model inference is used.

@@ -300,6 +300,40 @@ synthetic ingestion policy. This lab does not measure financial detection
 accuracy, production throughput or Filebeat's own mixed-bulk response
 capture. See the [reproduction steps](ELASTIC.md#record-mixed-bulk-outcomes).
 
+## Reviewed retry of held bulk items (2026-11-19)
+
+The [macOS report](../examples/elastic/result-reviewed-retry-macos.json)
+uses the original eight synthetic alerts and real Elasticsearch and Filebeat
+8.19.6. A scripted operator recorded a hold, two retry decisions later
+invalidated by newer evidence, and a final retry after the lab corrected its
+own rejecting ingest policy. The last review bound the failed item's request
+and response digests, the original source digest and a new read snapshot.
+
+The held review produced no spool. A newer read invalidated one retry decision;
+a newly captured failure invalidated another. The final approved spool
+contained exactly one retained alert. Filebeat created that alert with zero
+duplicate conflicts, and an independent read confirmed all eight original
+sources at version 1. A later read also prevented further export from the
+same review. Reopening the database preserved every earlier review and both
+failure receipts.
+
+The 22 Python regressions include schema migration, stale observations,
+updated bulk results, a later hold, existing-file protection and writer
+exclusion while exporting a reviewed spool. A separate read-only checker
+recomputed four review-basis hashes from SQLite and raw snapshots, checked
+four request/response capture digests and compared all eight final sources.
+This checker imports no project modules and was run by the same author.
+
+The review basis includes the captured bulk response, whose timing and index
+metadata can differ between executions. Its digest identifies that run's
+bytes. Functional cross-platform comparisons must retain the observed
+statuses and sources while allowing these evidence-bound digests to differ.
+The actor identity is declared, and the decisions in this lab are scripted.
+The test demonstrates a technical retry workflow within a trusted local
+operator boundary. It provides no actor authentication or wall-clock
+freshness check for operator-supplied captures. Reproduce with
+[`--review`](ELASTIC.md#review-held-items-before-retry).
+
 ## Unvalidated boundaries
 
 No production workload, multi-tenant Elastic deployment, hostile filesystem

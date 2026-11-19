@@ -88,7 +88,7 @@ class DeliveryJournal(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "already binds"):
             self.observe(self.found, self.missing)
         with receipts.closing(receipts.connect(self.path, write=False)) as db:
-            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 2)
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 4)
             out = self.work / "retry.ndjson"
             self.assertEqual(receipts.recover(db, self.label, out)["documents"], 1)
             self.assertEqual(out.read_bytes(), self.payload)

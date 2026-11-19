@@ -9,6 +9,7 @@ on:
       - 'scripts/elastic_ack_fault.py'
       - 'scripts/elastic_lab_tls.py'
       - 'scripts/elastic_receipts.py'
+      - 'scripts/elastic_review.py'
       - 'tests/test_elastic_lab.py'
       - 'tests/test_elastic_bulk.py'
       - 'Cargo.*'
@@ -21,6 +22,7 @@ on:
       - 'scripts/elastic_ack_fault.py'
       - 'scripts/elastic_lab_tls.py'
       - 'scripts/elastic_receipts.py'
+      - 'scripts/elastic_review.py'
       - 'tests/test_elastic_lab.py'
       - 'tests/test_elastic_bulk.py'
       - 'Cargo.*'
@@ -67,9 +69,9 @@ jobs:
           name: elastic-integration-result
           path: ${{ runner.temp }}/elastic-controlled-lab/result.json
           if-no-files-found: error
-      - name: Prove TLS, lost acknowledgement replay and mixed bulk evidence
+      - name: Prove TLS, mixed bulk evidence and reviewed retries
         run: >-
-          python3 scripts/run_elastic_lab.py --tls --receipts --delivery --ack-loss --mixed-bulk
+          python3 scripts/run_elastic_lab.py --tls --receipts --delivery --ack-loss --mixed-bulk --review
           --elasticsearch-home "$RUNNER_TEMP/elastic-vendor/elasticsearch-8.19.6"
           --filebeat-home "$RUNNER_TEMP/elastic-vendor/filebeat-8.19.6-linux-x86_64"
           --work-dir "$RUNNER_TEMP/elastic-tls-lab"

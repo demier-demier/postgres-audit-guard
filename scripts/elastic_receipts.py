@@ -20,6 +20,7 @@ MAX_OBSERVATIONS = 2_000
 MAX_SNAPSHOT_BYTES = 32 * 1024 * 1024
 MAX_BULK_ATTEMPTS = 2_000
 MAX_BULK_ITEMS = 1_000
+MAX_REVIEWS = 2_000
 MAX_PAGES = 32_768
 APPLICATION_ID = 0x50414752
 SCHEMA = """
@@ -86,6 +87,21 @@ BULK_SCHEMA = (
     "CREATE INDEX bulk_scope ON bulk_attempts(batch, sink_index)",
     "CREATE INDEX bulk_errors ON bulk_items(document, attempt) WHERE disposition <> 'created'",
 )
+REVIEW_SCHEMA = (
+    "ALTER TABLE observations ADD COLUMN bulk_watermark INTEGER",
+    """CREATE TABLE bulk_reviews(
+        id TEXT PRIMARY KEY,
+        attempt TEXT NOT NULL,
+        document TEXT NOT NULL,
+        observation TEXT NOT NULL REFERENCES observations(id),
+        actor TEXT NOT NULL,
+        decision TEXT NOT NULL CHECK(decision IN ('retry', 'hold')),
+        reason TEXT NOT NULL,
+        basis_hash TEXT NOT NULL,
+        FOREIGN KEY (attempt, document) REFERENCES bulk_items(attempt, document)
+    )""",
+    "CREATE INDEX review_document ON bulk_reviews(document, attempt)",
+)
 
 
 def digest(payload):
@@ -131,8 +147,8 @@ def init(path):
     with closing(sqlite3.connect(str(path))) as db:
         db.executescript(
             f"PRAGMA page_size=4096; BEGIN IMMEDIATE; {SCHEMA}"
-            + ";".join(DELIVERY_SCHEMA + BULK_SCHEMA)
-            + f"; PRAGMA application_id={APPLICATION_ID}; PRAGMA user_version=3; COMMIT;"
+            + ";".join(DELIVERY_SCHEMA + BULK_SCHEMA + REVIEW_SCHEMA)
+            + f"; PRAGMA application_id={APPLICATION_ID}; PRAGMA user_version=4; COMMIT;"
         )
 
 
@@ -142,7 +158,7 @@ def connect(path, write):
     db = sqlite3.connect(path.resolve().as_uri() + "?mode=" + mode, uri=True, timeout=5)
     try:
         require(db.execute("PRAGMA application_id").fetchone()[0] == APPLICATION_ID
-                and schema_version(db) in (1, 2, 3),
+                and schema_version(db) in (1, 2, 3, 4),
                 "Unsupported receipt journal")
         if write:
             require(db.execute("PRAGMA page_size").fetchone()[0] == 4096, "Unexpected journal page size")
@@ -163,7 +179,7 @@ def schema_version(db):
 
 
 def migrate(db, target):
-    for version, statements in [(2, DELIVERY_SCHEMA), (3, BULK_SCHEMA)]:
+    for version, statements in [(2, DELIVERY_SCHEMA), (3, BULK_SCHEMA), (4, REVIEW_SCHEMA)]:
         if schema_version(db) < version <= target:
             for statement in statements:
                 db.execute(statement)
@@ -357,14 +373,19 @@ def observe(path, batch, label, index, snapshot_path):
 
     with closing(connect(path, write=True)) as db, db:
         db.execute("BEGIN IMMEDIATE")
-        migrate(db, 2)
+        migrate(db, 4)
         prior = db.execute("SELECT batch, sink_index, snapshot_hash FROM observations WHERE id=?", (label,)).fetchone()
         if prior is not None:
             require(prior == (batch, index, observation_hash), "Observation label already binds another capture")
             return delivery_receipt(db, label)
         require(db.execute("SELECT count(*) FROM observations").fetchone()[0] < MAX_OBSERVATIONS,
                 "Observation limit reached; preserve and archive this journal")
-        db.execute("INSERT INTO observations VALUES (?, ?, ?, ?)", (label, batch, index, observation_hash))
+        watermark = db.execute(
+            "SELECT COALESCE(MAX(rowid), 0) FROM bulk_attempts WHERE batch=? AND sink_index=?",
+            (batch, index),
+        ).fetchone()[0]
+        db.execute("INSERT INTO observations(id, batch, sink_index, snapshot_hash, bulk_watermark) VALUES (?, ?, ?, ?, ?)",
+                   (label, batch, index, observation_hash, watermark))
         for key, canonical, expected_hash in accepted(db, batch):
             require(key in by_id, "Snapshot does not cover every accepted document")
             require(digest(canonical) == expected_hash, "Stored document failed its digest check")
@@ -492,7 +513,7 @@ def record_bulk(path, batch, label, index, request_path, response_path):
     identity = (batch, index, digest(request), digest(response))
     with closing(connect(path, write=True)) as db, db:
         db.execute("BEGIN IMMEDIATE")
-        migrate(db, 3)
+        migrate(db, 4)
         prior = db.execute("SELECT batch, sink_index, request_hash, response_hash FROM bulk_attempts WHERE id=?",
                            (label,)).fetchone()
         if prior is not None:

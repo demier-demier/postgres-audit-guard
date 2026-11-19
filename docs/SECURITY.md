@@ -105,6 +105,22 @@ an ID within that journal. Restrict capture writes and keep the original
 encrypted or access-controlled, since error messages can echo indexed fields.
 The receipt stores typed errors and digests without copying raw reasons.
 
+Review actors are operator-declared pseudonyms. The CLI does not authenticate
+them or establish that a human personally approved a decision. Access to the
+journal is the authorization boundary. Each retry decision binds one failed
+item to the retained source and latest recorded read of the same index and
+batch. A new observation, any later bulk result in that scope or a later
+review prevents the older decision from producing a spool. The read must
+explicitly report the document absent. Review validity uses local commit
+order, with no wall-clock freshness or live capture-origin guarantee.
+
+The reviewed output is a private NDJSON spool for the create-only collector.
+The operator coordinates publication and delivery. A later hold cannot
+recall an already exported or delivered file. Reconstructing an approved spool
+can repeat a delivery, so record its outcome and collect a new read. Local
+privileged writers can alter or bypass the workflow. Review decisions concern
+technical ingestion only, with no automatic action on accounts or people.
+
 The index is not append-only evidence, a global conflict registry, or proof that
 every source event was collected. Keep immutable-by-workflow evidence bundles and
 externally trusted digests outside Elasticsearch. No production access-control,

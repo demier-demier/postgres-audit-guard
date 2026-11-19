@@ -93,6 +93,9 @@ tests what happens when the index commits a write but Filebeat loses the reply.
 [Bulk outcome receipts](docs/ELASTIC.md#record-mixed-bulk-outcomes) preserve
 per-document Elasticsearch errors and keep affected IDs out of missing-alert
 recovery pending review.
+[Recorded review decisions](docs/ELASTIC.md#review-held-items-before-retry)
+can explicitly release a retained source for retry while rejecting decisions
+superseded by newer evidence or a later hold.
 
 ```sh
 cargo run --release --locked -- prepare-elastic \

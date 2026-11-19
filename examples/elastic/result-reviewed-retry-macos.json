@@ -1,0 +1,71 @@
+{
+  "schema": "elastic-reviewed-retry-result/v1",
+  "elasticsearch_version": "8.19.6",
+  "filebeat_version": "8.19.6",
+  "license": "basic",
+  "fixture": "examples/postgres15-local.jsonl",
+  "fixture_sha256": "b816a17d90d7d810a2f73912bce667f2639f009025eea62d2516016add702df1",
+  "reviewed_retry": {
+    "decision_source": "scripted synthetic operator; identity is declared",
+    "held_review": {
+      "actor": "synthetic-reviewer",
+      "actor_identity": "operator-declared",
+      "attempt": "mixed-bulk",
+      "basis_sha256": "b9fff7a2085fee63fd600e6b376c52e1c46074b50038e0f4559e71b22136c55e",
+      "decision": "hold",
+      "document_id": "db5978a8580acf7298d9b69a7d8f058cb01363a44d98b8cd68ae515c8e6fc8e0",
+      "observation": "mixed-bulk-after-recovery",
+      "reason": "investigation-required",
+      "review": "keep-held",
+      "schema": "elastic-bulk-review/v1"
+    },
+    "approved_review": {
+      "actor": "synthetic-reviewer",
+      "actor_identity": "operator-declared",
+      "attempt": "review-repeat-failure",
+      "basis_sha256": "30fcaf07cb8f76a4566842928daf570a0a0ff522c39b8cf613b1c674d2f81dbf",
+      "decision": "retry",
+      "document_id": "db5978a8580acf7298d9b69a7d8f058cb01363a44d98b8cd68ae515c8e6fc8e0",
+      "observation": "review-policy-corrected",
+      "reason": "policy-corrected",
+      "review": "approved-retry",
+      "schema": "elastic-bulk-review/v1"
+    },
+    "approved_spool": {
+      "basis_sha256": "30fcaf07cb8f76a4566842928daf570a0a0ff522c39b8cf613b1c674d2f81dbf",
+      "batch": "initial",
+      "document_id": "db5978a8580acf7298d9b69a7d8f058cb01363a44d98b8cd68ae515c8e6fc8e0",
+      "documents": 1,
+      "index": "postgres-audit-guard-lab",
+      "output_sha256": "4e8e12fac0ce173352e61eceb586661341e36713f4a29c8af1bbd844c868e609",
+      "review": "approved-retry",
+      "schema": "elastic-reviewed-spool/v1"
+    },
+    "held_review_export_rejected": true,
+    "stale_observation_export_rejected": true,
+    "new_bulk_result_invalidated_export": true,
+    "existing_output_preserved": true,
+    "before_retry": {
+      "confirmed": 7,
+      "mismatch": 0,
+      "missing": 1
+    },
+    "collector": {
+      "stage": "reviewed-retry-collector",
+      "documents": 8,
+      "version_per_document": 1,
+      "acknowledged_creates": 1,
+      "observed_duplicate_conflicts": 0,
+      "sources_match": true
+    },
+    "after_retry": {
+      "confirmed": 8,
+      "mismatch": 0,
+      "missing": 0
+    },
+    "delivered_review_export_rejected": true,
+    "prior_reviews_and_failures_preserved": true
+  },
+  "owned_processes_stopped": true,
+  "selected_loopback_ports_closed": true
+}

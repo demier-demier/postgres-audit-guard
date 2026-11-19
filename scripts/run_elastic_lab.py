@@ -150,9 +150,12 @@ def main():
                         help="Drop a committed bulk reply on the owned TLS path with --delivery")
     parser.add_argument("--mixed-bulk", action="store_true",
                         help="Capture real bulk item outcomes with --delivery")
+    parser.add_argument("--review", action="store_true",
+                        help="Exercise scripted operator decisions and reviewed retry with --mixed-bulk")
     args = parser.parse_args()
     require(not args.ack_loss or args.delivery, "Lost acknowledgement testing requires --delivery")
     require(not args.mixed_bulk or args.delivery, "Mixed bulk testing requires --delivery")
+    require(not args.review or args.mixed_bulk, "Reviewed retry testing requires --mixed-bulk")
     require(not args.delivery or (args.tls and args.receipts), "Delivery recovery requires --tls --receipts")
     require(os.name == "posix", "Lab process isolation is supported on macOS/Linux only")
     require(os.geteuid() != 0, "Run this isolated lab as a non-root user")
@@ -437,6 +440,7 @@ def main():
         delivery_result = None
         ack_loss_result = None
         mixed_bulk_result = None
+        reviewed_retry_result = None
         if args.delivery:
             _, reader_key = es_request("POST", "/_security/api_key", {
                 "name": "pag-synthetic-reader", "expiration": "30m",
@@ -672,6 +676,79 @@ def main():
                     "recovery_collector": stages.pop(), "after_recovery": after_recovery["counts"],
                     "confirmed_sources_match_at_version_1": True,
                 }
+                if args.review:
+                    review_tool = [sys.executable, str(REPO / "scripts/elastic_review.py"),
+                                   "--journal", str(work / "mixed-bulk-receipts.db")]
+
+                    def review_call(command, *parameters, code=0):
+                        operation = run([*review_tool, command, *parameters])
+                        require(operation.returncode == code, "Bulk review operation failed: " + command)
+                        return json.loads(operation.stdout) if operation.stdout else None
+
+                    def decision(label, attempt, observed, kind="retry"):
+                        return review_call(
+                            "record", "--review", label, "--attempt", attempt, "--document", ids[2],
+                            "--observation", observed, "--actor", "synthetic-reviewer",
+                            "--decision", kind, "--reason",
+                            "policy-corrected" if kind == "retry" else "investigation-required",
+                        )
+
+                    def rejected_export(label, name):
+                        destination = work / (name + ".ndjson")
+                        review_call("materialize", "--review", label, "--output", str(destination), code=1)
+                        require(not destination.exists(), "Stale or held review published a spool")
+
+                    held = decision("keep-held", "mixed-bulk", "mixed-bulk-after-recovery", "hold")
+                    rejected_export("keep-held", "held-review-probe")
+                    decision("old-read-review", "mixed-bulk", "mixed-bulk-after-recovery")
+                    observe("review-new-read")
+                    rejected_export("old-read-review", "stale-observation-probe")
+                    decision("old-result-review", "mixed-bulk", "review-new-read")
+                    repeat_request, repeat_response = work / "review-repeat.ndjson", work / "review-repeat-response.json"
+                    receipt_call("bulk-request", *parameters, "--document", ids[2], "--output", str(repeat_request))
+                    _, raw = exchange(endpoint, "POST", "/_bulk", repeat_request.read_bytes(),
+                                      opener=opener, authorization=collector, content_type="application/x-ndjson")
+                    repeat_response.write_bytes(raw)
+                    repeated_failure = receipt_call(
+                        "record-bulk", *parameters, "--attempt", "review-repeat-failure",
+                        "--request", str(repeat_request), "--response", str(repeat_response), code=2,
+                    )
+                    require(repeated_failure["counts"] == {"created": 0, "conflict": 0, "rejected": 1},
+                            "The unchanged lab policy unexpectedly accepted a retry")
+                    rejected_export("old-result-review", "stale-result-probe")
+                    # The privileged harness corrects only its own synthetic reject rule.
+                    es_request("PUT", "/_ingest/pipeline/" + pipeline, {
+                        "processors": [{"pipeline": {"name": "postgres-audit-guard-v1"}}],
+                    })
+                    before_approved_retry = observe("review-policy-corrected")
+                    approved = decision("approved-retry", "review-repeat-failure", "review-policy-corrected")
+                    require(decision("approved-retry", "review-repeat-failure", "review-policy-corrected") == approved
+                            and review_call("show", "--review", "approved-retry") == approved,
+                            "Recorded review did not survive reopening and retry")
+                    approved_path = work / "approved-retry.ndjson"
+                    approved_spool = review_call("materialize", "--review", "approved-retry",
+                                                 "--output", str(approved_path))
+                    require(approved_spool["documents"] == 1 and json.loads(approved_path.read_bytes()) == docs[2],
+                            "Approved spool differs from the retained source")
+                    review_call("materialize", "--review", "approved-retry", "--output", str(approved_path), code=1)
+                    stage("reviewed-retry-collector", work / "reviewed-retry-state", 1, 0, source=approved_path)
+                    final_observation = observe("review-after-delivery")
+                    require(final_observation["counts"] == {"confirmed": 8, "missing": 0, "mismatch": 0},
+                            "Reviewed retry did not restore the entire accepted fixture")
+                    rejected_export("approved-retry", "delivered-review-probe")
+                    require(review_call("show", "--review", "keep-held") == held
+                            and receipt_call("bulk-receipt", "--attempt", "mixed-bulk") == mixed
+                            and receipt_call("bulk-receipt", "--attempt", "review-repeat-failure") == repeated_failure,
+                            "Retry altered an earlier decision or failure receipt")
+                    reviewed_retry_result = {
+                        "decision_source": "scripted synthetic operator; identity is declared",
+                        "held_review": held, "approved_review": approved, "approved_spool": approved_spool,
+                        "held_review_export_rejected": True, "stale_observation_export_rejected": True,
+                        "new_bulk_result_invalidated_export": True, "existing_output_preserved": True,
+                        "before_retry": before_approved_retry["counts"], "collector": stages.pop(),
+                        "after_retry": final_observation["counts"], "delivered_review_export_rejected": True,
+                        "prior_reviews_and_failures_preserved": True,
+                    }
             es_request("DELETE", "/_security/api_key", {"ids": [reader_key["id"]]})
             revoked, _ = request(endpoint, "POST", mget, query, expected=(401,), opener=opener, authorization=reader)
             delivery_result = {
@@ -795,6 +872,8 @@ def main():
             report["lost_acknowledgement"] = ack_loss_result
         if mixed_bulk_result is not None:
             report["mixed_bulk"] = mixed_bulk_result
+        if reviewed_retry_result is not None:
+            report["reviewed_retry"] = reviewed_retry_result
         result = report
     finally:
         cleanup(processes, handles)
